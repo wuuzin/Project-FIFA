@@ -1,3 +1,4 @@
+import asyncio
 import json
 import io
 import os
@@ -6,6 +7,7 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any
+from urllib.request import urlopen
 from urllib.parse import urlparse
 
 import discord
@@ -44,17 +46,22 @@ ABREVIACAO_PARA_ATRIBUTO = {
     abreviacao: campo for _, _, campo, abreviacao in ATRIBUTOS
 }
 MODIFICADORES_POSICAO = {
-    "Zagueiro": {"defesa": 15, "fisico": 15, "velocidade": -15, "passe": -15},
-    "Lateral": {"velocidade": 15, "resistencia": 15, "chute": -15, "visao": -15},
+    "Zagueiro": {"defesa": 15, "fisico": 15, "chute": -15, "velocidade": -15},
+    "Lateral": {"velocidade": 15, "passe": 15, "chute": -15, "visao": -15},
     "Volante": {"defesa": 15, "visao": 15, "chute": -15, "tecnica": -15},
-    "Meia": {"passe": 15, "tecnica": 15, "defesa": -15, "fisico": -15},
+    "Meia": {"passe": 15, "visao": 15, "chute": -15, "velocidade": -15},
+    "Meia Central": {"passe": 15, "visao": 15, "chute": -15, "velocidade": -15},
+    "Meia Direita": {"passe": 10, "velocidade": 10, "chute": -15, "defesa": -15},
+    "Meia Esquerda": {"passe": 10, "velocidade": 10, "chute": -15, "defesa": -15},
+    "Meia-Atacante": {"passe": 15, "chute": 15, "defesa": -15, "fisico": -15},
     "Ponta": {"velocidade": 15, "tecnica": 15, "defesa": -15, "fisico": -15},
     "Atacante": {"chute": 15, "fisico": 15, "defesa": -15, "passe": -15},
+    "Segundo Atacante": {"tecnica": 15, "chute": 15, "defesa": -15, "fisico": -15},
 }
 MODIFICADORES_PORTE = {
     "ectomorfo": {"velocidade": 15, "fisico": -15},
     "atletico": {"resistencia": 10, "fisico": -5},
-    "equilibrado": {},
+    "equilibrado": {"resistencia": 5},
     "mesomorfo": {"fisico": 10, "chute": 5},
     "tanque": {"fisico": 20, "velocidade": -15},
 }
@@ -83,6 +90,11 @@ ACOES_INDIVIDUAIS = {
         "custo_est": 10,
         "formula": "1d20 ((TEC + VIS) / 2)",
         "atributos": ("tecnica", "visao"),
+        "bonus_condicional": {"peso": {"atletico": {"tecnica": 5}}},
+        "execucao": (
+            "Usa fintas de tronco para desbalancear o marcador sem mudar "
+            "bruscamente de velocidade. Biotipo atlético recebe +5 em TEC."
+        ),
         "efeito": (
             "Supera o defensor na zona atual. O defensor sofre -2 em VEL "
             "no próximo turno."
@@ -93,9 +105,12 @@ ACOES_INDIVIDUAIS = {
         "nome": "Caneta / Janela",
         "categoria": "Dribles e Recursos Individuais",
         "custo_est": 15,
-        "formula": "1d20 (((TEC com -25%) + VIS) / 2)",
+        "formula": "1d20 + ((TEC - 25% + VIS) / 2)",
         "atributos": ("tecnica", "visao"),
-        "modificador_status": "-25%",
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
+        "percentual": 25,
+        "divisor": 2,
+        "execucao": "Passa a bola entre as pernas do defensor e o ultrapassa pelo outro lado.",
         "efeito": (
             "Avança para a zona desejada; o defensor sofre -5 em VIS "
             "e -2 em DEF por dois turnos."
@@ -108,6 +123,11 @@ ACOES_INDIVIDUAIS = {
         "custo_est": 15,
         "formula": "1d20 ((FIS + VEL) / 2)",
         "atributos": ("fisico", "velocidade"),
+        "bonus_condicional": {"peso": {"ectomorfo": {"velocidade": 5}}},
+        "execucao": (
+            "Adianta a bola no espaço vazio e ganha do marcador na corrida "
+            "pura. Biotipo ectomorfo recebe +5 em VEL."
+        ),
         "efeito": "Permite avançar até 2 zonas no mesmo turno.",
         "falha": "A bola vai para a lateral ou para o goleiro adversário.",
     },
@@ -117,6 +137,11 @@ ACOES_INDIVIDUAIS = {
         "custo_est": 10,
         "formula": "1d20 + ((FIS + TEC) / 2)",
         "atributos": ("fisico", "tecnica"),
+        "bonus_condicional": {"peso": {"tanque": {"fisico": 5}}},
+        "execucao": (
+            "Protege a bola com as costas voltadas para o zagueiro e gira "
+            "usando o corpo como alavanca. Biotipo Tanque recebe +5 em FIS."
+        ),
         "efeito": "Mantém a posse, supera o marcador e causa -10 EST ao defensor.",
         "falha": "O atacante é desarmado e cai no gramado.",
     },
@@ -126,6 +151,10 @@ ACOES_INDIVIDUAIS = {
         "custo_est": 5,
         "formula": "1d20 ((TEC + VEL) / 2)",
         "atributos": ("tecnica", "velocidade"),
+        "execucao": (
+            "Controla o passe já projetando a bola e o corpo na direção da "
+            "corrida."
+        ),
         "efeito": "Concede +2 em VEL para a ação subsequente no mesmo turno.",
         "falha": "A bola escapa 1 zona à frente e vira bola dividida.",
     },
@@ -135,8 +164,29 @@ ACOES_INDIVIDUAIS = {
         "custo_est": 10,
         "formula": "1d20 ((VIS + TEC) / 2)",
         "atributos": ("visao", "tecnica"),
+        "execucao": (
+            "Ameaça dominar o passe, mas deixa a bola passar entre as pernas "
+            "para um companheiro livre atrás."
+        ),
         "efeito": "Defensores na zona sofrem -2 em VIS no turno atual.",
         "falha": "A zaga intercepta a bola sem rolar dados.",
+    },
+    "firula": {
+        "nome": "Firula",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 15,
+        "formula": "1d20 + TEC",
+        "atributos": ("tecnica",),
+        "formula_tipo": "soma_dividida",
+        "divisor": 1,
+        "bonus_condicional": {"peso": {"ectomorfo": {"tecnica": 5}}},
+        "execucao": (
+            "Ação técnica ousada, como chapéu, calcanhar, letra, pedalada "
+            "rápida ou elástico, usada para desestabilizar a marcação ou "
+            "encobrir o marcador. Biotipo ectomorfo recebe +5 em TEC."
+        ),
+        "efeito": "Desestabiliza a marcação e supera o defensor na zona.",
+        "falha": "O defensor lê o recurso e recupera a posse.",
     },
     "chute_colocado": {
         "nome": "Chute Colocado",
@@ -147,7 +197,8 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_reduzida_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Arremate de precisão buscando os ângulos da goleira.",
+        "execucao": "Arremate de precisão buscando os ângulos do goleiro. Biotipo equilibrado recebe +5 em CHU.",
+        "bonus_condicional": {"peso": {"equilibrado": {"chute": 5}}},
         "efeito": "Corta em -5 o atributo FIS do goleiro no teste de defesa.",
         "falha": "O goleiro segura a bola com firmeza, sem chance de rebote.",
     },
@@ -160,12 +211,13 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_reduzida_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Chute brutal focado na velocidade da bola.",
+        "execucao": "Chute brutal focado na velocidade da bola. Biotipo forte recebe +5 em FIS.",
+        "bonus_condicional": {"peso": {"mesomorfo": {"fisico": 5}}},
         "efeito": (
-            "O goleiro sofre -3 em TEC para segurar e, mesmo defendendo, "
-            "deve espalmar, gerando rebote obrigatório."
+            "Se for no gol, o goleiro sofre -5 em TEC para segurar e, mesmo "
+            "defendendo, deve espalmar, gerando rebote obrigatório."
         ),
-        "falha": "Total menor que 8 isola a bola por cima do gol.",
+        "falha": "Total menor que 10 isola a bola por cima do gol.",
     },
     "chute_de_trivela": {
         "nome": "Chute de Trivela",
@@ -176,7 +228,8 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "primeiro_reduzido_soma_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Finalização com o lado externo do pé.",
+        "execucao": "Finalização com o lado externo do pé. Biotipo atlético recebe +5 em CHU.",
+        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
         "efeito": "Aplica -5 em DEF do goleiro e dos zagueiros.",
         "falha": "A falha resulta em chute fraco ou torto e tiro de meta.",
     },
@@ -188,8 +241,23 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("chute", "tecnica", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 3,
+        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
+        "execucao": "Biotipo atlético recebe +5 em CHU para esta tática.",
         "efeito": "Com o goleiro fora do gol, o teste de defesa sofre -50%.",
         "falha": "Com o goleiro na linha, o resultado do chute é cortado pela metade.",
+    },
+    "chute_normal": {
+        "nome": "Chute Normal",
+        "categoria": "Finalizações",
+        "custo_est": 10,
+        "formula": "1d20 + CHU",
+        "atributos": ("chute",),
+        "formula_tipo": "soma_dividida",
+        "divisor": 1,
+        "efeito": (
+            "Ação básica de finalização direta em direção à meta, "
+            "executada de dentro ou de fora da grande área."
+        ),
     },
     "finalizacao_de_primeira_sem_pulo": {
         "nome": "Finalização de Primeira / Sem Pulo",
@@ -202,6 +270,7 @@ ACOES_INDIVIDUAIS = {
         "penalidade_execucao": "-10 em CHU",
         "penalidade_atributo": "chute",
         "penalidade_valor": -10,
+        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
         "efeito": "Reduz pela metade o bloqueio dos zagueiros e a reação do goleiro.",
         "falha": "Total inferior a 13 faz o atacante furar ou mandar a bola para fora.",
     },
@@ -215,8 +284,9 @@ ACOES_INDIVIDUAIS = {
         "percentual": 50,
         "divisor": 2,
         "condicao": "Exige bola alçada no ar.",
-        "efeito": "O goleiro sofre -5 em DEF e TEC devido ao fator surpresa.",
-        "falha": "Total menor que 15 anula a jogada por falta técnica.",
+        "bonus_condicional": {"altura": {"alto": {"chute": 5}}},
+        "efeito": "O goleiro sofre -10 em DEF e TEC devido ao fator surpresa.",
+        "falha": "Total menor que 18 anula a jogada por falta técnica.",
     },
     "cabeceio": {
         "nome": "Cabeceio",
@@ -227,18 +297,20 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_dividida",
         "divisor": 2,
         "condicao": "Exige cruzamento a meia-altura na zona de Zaga/Área.",
+        "bonus_condicional": {"altura": {"alto": {"tecnica": 5}}},
         "efeito": "Garante +2 em FIS no duelo aéreo e rebote frontal se defendido.",
-        "falha": "Falha contra o zagueiro causa -10 EST e -1 em VEL no próximo turno.",
+        "falha": "Falha contra o zagueiro causa -10 EST e -5 em VEL no próximo turno.",
     },
     "chute_cruzado": {
         "nome": "Chute Cruzado",
         "categoria": "Finalizações",
         "custo_est": 10,
-        "formula": "1d20 + ((TEC + CHU) / 2)",
+        "formula": "1d20 + ((TEC + CHU - 5) / 2)",
         "atributos": ("tecnica", "chute"),
-        "formula_tipo": "soma_dividida",
+        "formula_tipo": "soma_constante_dividida",
+        "constante": -5,
         "divisor": 2,
-        "execucao": "Arremate em direção à trave mais distante.",
+        "execucao": "Arremate em direção à trave mais distante. Anula o debuff de lado de campo para canhotos e destros.",
         "efeito": "O goleiro sofre -2 em VIS; rebote vai para o centro da área.",
         "falha": "Erros de precisão fazem a bola sair em tiro de meta.",
     },
@@ -290,11 +362,15 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("passe",),
         "formula_tipo": "soma_dividida",
         "divisor": 1,
-        "execucao": "Troca de passes simples para manter a posse na mesma zona ou zona adjacente.",
+        "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
+        "execucao": (
+            "Troca de passes simples para manter a posse na mesma zona ou zona "
+            "adjacente. Biotipo equilibrado recebe +5 em PAS."
+        ),
         "efeito": "Garante a posse com risco quase nulo.",
     },
     "tabela_um_dois": {
-        "nome": "Tabela / Um-Dois",
+        "nome": "Tabela",
         "categoria": "Passes de Manutenção e Curto Alcance",
         "custo_est": 10,
         "formula": "1d20 + ((PAS + VEL) / 2)",
@@ -302,22 +378,29 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_dividida",
         "divisor": 2,
         "execucao": "Toca a bola para um companheiro e arranca imediatamente para receber a devolução à frente.",
-        "efeito": "Supera o marcador direto; na devolução bem-sucedida, recebe a bola 1 zona à frente com +2 em VEL no próximo turno.",
+        "efeito": (
+            "Se a devolução for bem-sucedida, o passador original recebe a "
+            "bola 1 zona à frente com +5 em VEL no próximo turno."
+        ),
     },
     "passe_de_calcanhar": {
         "nome": "Passe de Calcanhar",
         "categoria": "Passes de Manutenção e Curto Alcance",
         "custo_est": 10,
-        "formula": "1d20 + ((PAS - 10% + TEC - 10%) / 2)",
+        "formula": "1d20 + ((PAS - 20% + TEC - 10%) / 2)",
         "atributos": ("passe", "tecnica"),
         "formula_tipo": "dois_reduzidos_soma_dividida",
-        "percentuais": (10, 10),
+        "percentuais": (20, 10),
         "divisor": 2,
-        "execucao": "Toque rápido sem olhar, usando o calcanhar para surpreender a marcação.",
+        "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
+        "execucao": (
+            "Toque rápido sem olhar, usando o calcanhar para pegar a marcação "
+            "de surpresa. Biotipo equilibrado recebe +5 em PAS."
+        ),
         "efeito": "Reduz em 10% a capacidade de interceptação dos defensores na zona.",
     },
     "passe_pifado": {
-        "nome": "Passe Pifado",
+        "nome": "Passe em Profundidade",
         "categoria": "Passes de Profundidade e Ruptura",
         "custo_est": 15,
         "formula": "1d20 + ((PAS + VIS) / 2)",
@@ -325,10 +408,10 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_dividida",
         "divisor": 2,
         "execucao": "Passe milimétrico que rasga a linha de defesa e encontra o atacante em velocidade.",
-        "efeito": "O atacante recebe livre de marcadores de linha e ganha +2 em VEL no duelo contra o goleiro.",
+        "efeito": "O atacante recebe +5 em VEL nos duelos subsequentes.",
     },
     "lancamento_longo_de_inversao": {
-        "nome": "Lançamento Longo de Inversão",
+        "nome": "Inversão",
         "categoria": "Passes de Profundidade e Ruptura",
         "custo_est": 15,
         "formula": "1d20 + ((PAS + FIS - 10%) / 2)",
@@ -337,10 +420,10 @@ ACOES_INDIVIDUAIS = {
         "percentual": 10,
         "divisor": 2,
         "execucao": "Bola alçada que cruza o campo de um corredor lateral para o outro.",
-        "efeito": "Ignora defensores nas zonas centrais e aplica -2 em VIS e DEF na zaga no próximo turno.",
+        "efeito": "Ignora defensores nas zonas centrais e aplica -5 em VIS na zaga adversária no próximo turno.",
     },
     "passe_de_trivela_em_profundidade": {
-        "nome": "Passe de Trivela em Profundidade",
+        "nome": "Passe de Trivela",
         "categoria": "Passes de Profundidade e Ruptura",
         "custo_est": 20,
         "formula": "1d20 + ((PAS - 25% + TEC) / 2)",
@@ -349,53 +432,71 @@ ACOES_INDIVIDUAIS = {
         "percentual": 25,
         "divisor": 2,
         "execucao": "Passe com a parte externa do pé que faz uma curva por fora da linha dos zagueiros.",
-        "efeito": "Ignora a primeira linha de interceptação e impede o goleiro de sair para interceptar a bola no ar.",
-        "falha": "Total menor que 11 faz a bola pegar efeito excessivo e sair em tiro de meta.",
+        "efeito": (
+            "Ignora completamente a primeira linha de interceptação dos "
+            "volantes/zagueiros centrais. Quem receber o passe recebe +5 de CHU."
+        ),
+        "falha": "Total menor que 15 faz a bola pegar efeito excessivo e sair em tiro de meta.",
     },
     "cruzamento_de_linha_de_fundo": {
-        "nome": "Cruzamento de Linha de Fundo",
+        "nome": "Cruzamento Lateral",
         "categoria": "Cruzamentos e Bolas Alçadas",
         "custo_est": 10,
         "formula": "1d20 + ((PAS + TEC) / 2)",
         "atributos": ("passe", "tecnica"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Cobrança das zonas laterais visando a cabeça dos atacantes na Zaga/Área.",
-        "efeito": "Coloca a bola na disputa aérea e dá +1 em FIS para o atacante que tentar o cabeceio.",
+        "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
+        "execucao": (
+            "Cobrança das zonas laterais visando a cabeça dos atacantes na "
+            "Zaga/Área. Biotipo equilibrado recebe +5 em PAS."
+        ),
+        "efeito": "Coloca a bola na disputa aérea e dá +4 em FIS para o atacante que tentar o cabeceio.",
     },
     "cruzamento_tenso_rasante": {
-        "nome": "Cruzamento Tenso / Rasante",
+        "nome": "Cruzamento Rasante",
         "categoria": "Cruzamentos e Bolas Alçadas",
         "custo_est": 15,
         "formula": "1d20 + ((PAS + FIS) / 2)",
         "atributos": ("passe", "fisico"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Bola cruzada à meia-altura, forte e rápida, cortando a pequena área.",
-        "efeito": "Torna a bola extremamente difícil para o goleiro segurar, causando -3 em TEC.",
+        "bonus_condicional": {"peso": {"atletico": {"passe": 5}}},
+        "execucao": (
+            "Bola cruzada à meia-altura, forte e rápida, cortando a pequena "
+            "área. Biotipo atlético recebe +5 em PAS."
+        ),
+        "efeito": "Diminui em 5 o total do goleiro caso haja finalização.",
     },
     "cruzamento_cavado_curto": {
-        "nome": "Cruzamento Cavado / Curto",
+        "nome": "Cruzamento Curto",
         "categoria": "Cruzamentos e Bolas Alçadas",
         "custo_est": 15,
         "formula": "1d20 + ((PAS + VIS + TEC) / 3)",
         "atributos": ("passe", "visao", "tecnica"),
         "formula_tipo": "soma_dividida",
         "divisor": 3,
-        "execucao": "Toque suave por cima do primeiro marcador para encobrir a zaga e achar o segundo pau.",
-        "efeito": "Concede +3 em CHU ao atacante que receber a bola.",
+        "bonus_condicional": {"peso": {"atletico": {"passe": 5}}},
+        "execucao": (
+            "Toque suave por cima do primeiro marcador para encobrir a zaga e "
+            "achar o segundo pau. Biotipo atlético recebe +5 em PAS."
+        ),
+        "efeito": "Concede +5 em CHU ao atacante que receber a bola.",
     },
     "bote": {
         "nome": "Bote",
         "categoria": "Botes e Desarmes Diretos",
         "custo_est": 10,
-        "formula": "1d20 + ((DEF + VEL) / 2)",
-        "atributos": ("defesa", "velocidade"),
+        "formula": "1d20 + DEF",
+        "atributos": ("defesa",),
         "formula_tipo": "soma_dividida",
-        "divisor": 2,
+        "divisor": 1,
+        "bonus_condicional": {"peso": {"tanque": {"defesa": 5}}},
         "execucao": "Lê a intenção e ataca a bola no momento exato.",
-        "efeito": "Rouba a bola de forma limpa e projeta para uma zona livre.",
-        "falha": "O zagueiro é ultrapassado e sofre -2 em VEL no turno atual.",
+        "efeito": (
+            "Rouba a bola de forma limpa e projeta para uma zona livre ou "
+            "para um companheiro na mesma zona. Biotipo Tanque recebe +5 em DEF."
+        ),
     },
     "carrinho": {
         "nome": "Carrinho",
@@ -406,9 +507,17 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_constante_dividida",
         "constante": 5,
         "divisor": 2,
+        "bonus_condicional": {"peso": {"mesomorfo": {"defesa": 5}}},
         "execucao": "Lança-se ao gramado para cortar a bola no limite.",
-        "efeito": "Garante o desarme ou trava o chute/passe.",
-        "falha": "Total inferior a 13 resulta em falta; inferior a 8, cartão amarelo.",
+        "efeito": (
+            "Garante o desarme ou trava o chute/passe. Se a margem de vitória "
+            "for pelo menos o dobro, a defesa mantém a posse; caso contrário, "
+            "a bola sai pela lateral ou escanteio. Biotipo Mesomorfo recebe +5 em DEF."
+        ),
+        "falha": (
+            "Total inferior a 10 resulta em falta; inferior a 5, cartão "
+            "amarelo; falha crítica resulta em cartão vermelho."
+        ),
         "falha_critica": "Falha crítica resulta em cartão vermelho.",
     },
     "bote_de_cobertura": {
@@ -430,20 +539,31 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("defesa", "fisico"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
+        "bonus_condicional": {"peso": {"tanque": {"defesa": 5}}},
         "execucao": "Usa massa muscular e ombro para desestabilizar o atacante.",
-        "efeito": "O atacante perde equilíbrio, posse e 10 EST.",
-        "falha": "Total inferior a 9 resulta em falta.",
+        "efeito": (
+            "O atacante perde equilíbrio e posse, que fica livre na zona, "
+            "perdendo também 10 EST. Biotipo Tanque recebe +5 em DEF."
+        ),
+        "falha": "Total inferior a 10 resulta em falta.",
     },
     "sombra_protecao_de_bola": {
-        "nome": "Sombra / Proteção de Bola",
+        "nome": "Proteção de Bola",
         "categoria": "Jogo de Corpo e Condução Física",
         "custo_est": 10,
         "formula": "1d20 + ((FIS + VIS) / 2)",
         "atributos": ("fisico", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Coloca o corpo entre o atacante e a bola.",
-        "efeito": "Garante tiro de meta ou lateral para a própria equipe.",
+        "bonus_condicional": {"peso": {"tanque": {"defesa": 5}}},
+        "execucao": (
+            "Coloca o corpo entre o atacante e a bola e escolta sua trajetória "
+            "até a linha de fundo ou lateral sem tocá-la."
+        ),
+        "efeito": (
+            "Garante tiro de meta ou lateral para a própria equipe, sem risco "
+            "de escanteio. Biotipo Tanque recebe +5 em DEF."
+        ),
     },
     "contencao": {
         "nome": "Contenção",
@@ -455,7 +575,10 @@ ACOES_INDIVIDUAIS = {
         "constante": -5,
         "divisor": 2,
         "execucao": "Reduz o espaço e força o atacante a decidir sob pressão.",
-        "efeito": "Impede avanço de zona e aplica -2 em CHU e PAS no turno.",
+        "efeito": (
+            "Impede avanço de zona e aplica -5 em CHU e -5 em PAS para qualquer "
+            "ação do atacante no turno."
+        ),
     },
     "bloqueio_de_muralha": {
         "nome": "Bloqueio de Muralha",
@@ -466,7 +589,10 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_dividida",
         "divisor": 2,
         "execucao": "Projeta o corpo na trajetória de um arremate ou passe tenso.",
-        "efeito": "Bloqueia chutes ao gol ou intercepta cruzamentos rasantes; em falha inferior a 50%, reduz a força da bola em 1d10.",
+        "efeito": (
+            "Bloqueia chutes ao gol ou intercepta cruzamentos rasantes. Caso "
+            "a falha seja inferior à metade, reduz a força da bola em 1d10."
+        ),
     },
     "cabeceio_defensivo": {
         "nome": "Cabeceio Defensivo",
@@ -476,8 +602,12 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("defesa", "fisico", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 3,
+        "bonus_condicional": {"altura": {"alto": {"defesa": 5}}},
         "execucao": "Disputa no alto contra cruzamentos ou lançamentos longos na zona de Zaga/Área.",
-        "efeito": "Afasta a bola para um campo adjacente aleatório.",
+        "efeito": (
+            "Afasta a bola para um campo adjacente aleatório. Altura alta "
+            "aumenta DEF em +5."
+        ),
     },
     "armadilha_de_impedimento": {
         "nome": "Armadilha de Impedimento",
@@ -500,7 +630,7 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_dividida",
         "divisor": 1,
         "efeito": "Interrompe a jogada; a posse vai para o adversário com falta marcada e cartão amarelo obrigatório.",
-        "falha": "Com total inferior a 8, o zagueiro é expulso.",
+        "falha": "Com total inferior a 10, o zagueiro é expulso.",
     },
     "marcacao_pressao": {
         "nome": "Marcação Pressão",
@@ -544,12 +674,14 @@ ACOES_CONDUCAO = (
     "giro_de_pivo",
     "dominio_orientado",
     "corta_luz",
+    "firula",
 )
 ACOES_FINALIZACAO = (
     "chute_colocado",
     "bomba_de_forca",
     "chute_de_trivela",
     "cavada_cobertura",
+    "chute_normal",
     "finalizacao_de_primeira_sem_pulo",
     "bicicleta_acrobatico",
     "cabeceio",
@@ -692,8 +824,10 @@ def interpretar_modificador_status(
 
 def modificadores_contextuais(jogador: dict[str, Any]) -> tuple[dict[str, int], float]:
     modificadores: dict[str, int] = {}
+    posicao = str(jogador.get("posicao"))
     for grupo in (
-        MODIFICADORES_POSICAO.get(str(jogador.get("posicao")), {}),
+        MODIFICADORES_POSICAO.get(posicao, {}),
+        bonus_dominancia_meia(jogador),
         MODIFICADORES_PORTE.get(str(jogador.get("peso")), {}),
         MODIFICADORES_ALTURA.get(str(jogador.get("altura")), {}),
     ):
@@ -725,6 +859,39 @@ def atributos_efetivos(jogador: dict[str, Any]) -> dict[str, float]:
         valores,
     )
     return dict(zip(campos, valores_efetivos))
+
+
+def bonus_dominancia_meia(jogador: dict[str, Any]) -> dict[str, int]:
+    """Retorna o bônus de PAS das meias direita/esquerda quando aplicável."""
+    posicao = str(jogador.get("posicao"))
+    pe = str(jogador.get("pe"))
+    if posicao == "Meia Direita" and pe in {"Destro", "Ambidestro"}:
+        return {"passe": 5}
+    if posicao == "Meia Esquerda" and pe in {"Canhoto", "Ambidestro"}:
+        return {"passe": 5}
+    return {}
+
+
+def aplicar_bonus_condicional(
+    jogador: dict[str, Any],
+    dados_acao: dict[str, Any],
+    atributos: tuple[str, ...],
+    valores: list[float],
+) -> list[float]:
+    valores_ajustados = list(valores)
+    for campo_condicao, opcoes in dados_acao.get(
+        "bonus_condicional",
+        {},
+    ).items():
+        valor_jogador = str(jogador.get(campo_condicao))
+        for valor_esperado, bonus_por_atributo in opcoes.items():
+            if valor_jogador != valor_esperado:
+                continue
+            for atributo, bonus in bonus_por_atributo.items():
+                if atributo in atributos:
+                    indice = atributos.index(atributo)
+                    valores_ajustados[indice] += float(bonus)
+    return valores_ajustados
 
 
 def calcular_teste_acao(
@@ -811,8 +978,12 @@ def calcular_acao_individual(
         atributos,
         valores_status,
     )
-    if chave == "caneta_janela":
-        valores_status[0] *= 0.75
+    valores_status = aplicar_bonus_condicional(
+        jogador,
+        dados_acao,
+        atributos,
+        valores_status,
+    )
     valor_modificador, eh_percentual, atributo_modificado = (
         interpretar_modificador_status(modificador)
     )
@@ -918,6 +1089,21 @@ def validar_url_media(valor: str, campo: str) -> str:
     return url
 
 
+def validar_hex_cor(valor: str, campo: str = "A cor do embed") -> str:
+    cor = valor.strip().lstrip("#")
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", cor):
+        raise ValueError(
+            f"{campo} deve estar no formato hexadecimal, por exemplo #5865F2."
+        )
+    return f"#{cor.upper()}"
+
+
+def cor_hex_embed(valor: str | None) -> discord.Colour | None:
+    if not valor:
+        return None
+    return discord.Colour(int(valor.lstrip("#"), 16))
+
+
 async def obter_url_anexo(
     interaction: discord.Interaction,
     anexo: discord.Attachment,
@@ -949,6 +1135,7 @@ def preparar_jogador(jogador: dict[str, Any], nome: str) -> bool:
         "peso": "Não definido",
         "nacionalidade": "Não definida",
         "imagem_atributos": None,
+        "cor_embed": None,
         "nivel": 0,
         "xp": 0,
         "pontos_disponiveis": 0,
@@ -1036,6 +1223,44 @@ def formatar_cabecalho(texto: str) -> str:
     return "\n".join([nome, *restante])
 
 
+def extrair_cor_predominante(url: str) -> tuple[int, int, int] | None:
+    try:
+        from PIL import Image
+
+        with urlopen(url, timeout=5) as resposta:
+            imagem = Image.open(io.BytesIO(resposta.read()))
+            imagem = imagem.convert("RGB")
+            imagem.thumbnail((128, 128))
+            imagem_quantizada = imagem.quantize(colors=1)
+            paleta = imagem_quantizada.getpalette()
+            if not paleta or len(paleta) < 3:
+                return None
+            return tuple(paleta[:3])
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+async def obter_cor_banner(
+    url: str | None,
+    fallback: discord.Colour,
+) -> discord.Colour:
+    if not url:
+        return fallback
+    rgb = await asyncio.to_thread(extrair_cor_predominante, str(url))
+    return discord.Colour.from_rgb(*rgb) if rgb else fallback
+
+
+async def obter_cor_embed(
+    jogador: dict[str, Any],
+    imagem: str | None,
+    fallback: discord.Colour,
+) -> discord.Colour:
+    cor_personalizada = cor_hex_embed(jogador.get("cor_embed"))
+    if cor_personalizada is not None:
+        return cor_personalizada
+    return await obter_cor_banner(imagem, fallback)
+
+
 def criar_layout_view(
     embed: discord.Embed,
     timeout: float = 180,
@@ -1084,13 +1309,16 @@ def criar_layout_view(
     return view
 
 
-def criar_personagem_embed(jogador: dict[str, Any]) -> discord.Embed:
+def criar_personagem_embed(
+    jogador: dict[str, Any],
+    cor: discord.Colour | None = None,
+) -> discord.Embed:
     embed = discord.Embed(
         description=(
             "## ﹙🧾﹚ ATLETA\n"
             f"# {jogador['nome']}"
         ),
-        color=discord.Colour.dark_green(),
+        color=cor or discord.Colour.dark_green(),
     )
     if jogador.get("imagem"):
         embed.set_thumbnail(url=str(jogador["imagem"]))
@@ -1125,7 +1353,10 @@ def barra_atributo(valor: float) -> str:
     return f"`{'█' * preenchido}{'░' * (comprimento - preenchido)}` {valor:.0f}/100"
 
 
-def criar_atributos_embed(jogador: dict[str, Any]) -> discord.Embed:
+def criar_atributos_embed(
+    jogador: dict[str, Any],
+    cor: discord.Colour | None = None,
+) -> discord.Embed:
     linhas = []
     valores_efetivos = atributos_efetivos(jogador)
     modificadores, fator_estamina = modificadores_contextuais(jogador)
@@ -1149,7 +1380,7 @@ def criar_atributos_embed(jogador: dict[str, Any]) -> discord.Embed:
     embed = discord.Embed(
         title=f"Atributos de {jogador['nome']}",
         description="\n\n".join(linhas),
-        colour=discord.Colour.green(),
+        colour=cor or discord.Colour.green(),
     )
     if jogador.get("imagem_atributos"):
         embed.set_image(url=str(jogador["imagem_atributos"]))
@@ -1250,12 +1481,16 @@ class TabelaAtributosView(discord.ui.LayoutView):
         jogadores: dict[str, dict[str, Any]],
         chave: str,
         dono_id: int,
+        cor: discord.Colour | None = None,
+        editavel: bool = True,
     ) -> None:
         super().__init__(timeout=300)
         self.jogador = jogador
         self.jogadores = jogadores
         self.chave = chave
         self.dono_id = dono_id
+        self.cor = cor or discord.Colour.green()
+        self.editavel = editavel
         self.atributo_selecionado: str | None = None
         self.salvo = False
         self.reconstruir_layout()
@@ -1275,6 +1510,7 @@ class TabelaAtributosView(discord.ui.LayoutView):
     def reconstruir_layout(self) -> None:
         self.clear_items()
         seletor = AtributoSelect(self)
+        seletor.disabled = not self.editavel
         seletor.atualizar_selecao()
         pontos = int(self.jogador.get("pontos_disponiveis", 0))
         valor_atual = (
@@ -1286,7 +1522,8 @@ class TabelaAtributosView(discord.ui.LayoutView):
             label="➕",
             style=discord.ButtonStyle.success,
             disabled=(
-                self.salvo
+                not self.editavel
+                or self.salvo
                 or self.atributo_selecionado is None
                 or pontos <= 0
                 or valor_atual >= VALOR_MAXIMO_ATRIBUTO
@@ -1296,7 +1533,8 @@ class TabelaAtributosView(discord.ui.LayoutView):
             label="➖",
             style=discord.ButtonStyle.secondary,
             disabled=(
-                self.salvo
+                not self.editavel
+                or self.salvo
                 or self.atributo_selecionado is None
                 or valor_atual <= 0
             ),
@@ -1304,19 +1542,23 @@ class TabelaAtributosView(discord.ui.LayoutView):
         salvar = discord.ui.Button(
             label="💾",
             style=discord.ButtonStyle.primary,
-            disabled=self.salvo,
+            disabled=not self.editavel or self.salvo,
         )
         aumentar.callback = self._aumentar_callback
         diminuir.callback = self._diminuir_callback
         salvar.callback = self._salvar_callback
         children: list[discord.ui.Item] = [
             discord.ui.TextDisplay(
-                "Selecione um atributo, use ➕ para adicionar pontos "
-                "ou ➖ para remover um ponto. Clique em 💾 para salvar."
+                (
+                    "Selecione um atributo, use ➕ para adicionar pontos "
+                    "ou ➖ para remover um ponto. Clique em 💾 para salvar."
+                    if self.editavel
+                    else "Tabela de atributos em modo somente leitura."
+                )
             ),
             discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
             discord.ui.TextDisplay(
-                criar_atributos_embed(self.jogador).description or ""
+                criar_atributos_embed(self.jogador, self.cor).description or ""
             ),
         ]
         imagem_atributos = self.jogador.get("imagem_atributos")
@@ -1339,7 +1581,7 @@ class TabelaAtributosView(discord.ui.LayoutView):
         self.add_item(
             discord.ui.Container(
                 *children,
-                accent_color=discord.Colour.green(),
+                accent_color=self.cor,
             )
         )
 
@@ -1373,21 +1615,86 @@ class TabelaAtributosView(discord.ui.LayoutView):
 
 def criar_ranking_embed(
     ranking: list[tuple[str, dict[str, Any]]],
+    pagina: int = 1,
 ) -> discord.Embed:
+    inicio = (pagina - 1) * LIMITE_RANKING
+    jogadores_pagina = ranking[inicio:inicio + LIMITE_RANKING]
     linhas = [
         (
-            f"`{indice:02}` **{discord.utils.escape_markdown(str(jogador['nome']))}** "
-            f"• Nível `{jogador['nivel']}` • {barra_xp(jogador)}"
+            f"`{inicio + indice:02}` **{discord.utils.escape_markdown(str(jogador['nome']))}**\n"
+            f"> 🏷️ {jogador.get('posicao', 'Não definida')} "
+            f"• 👕 Camisa `{jogador.get('numero', 'N/A')}` "
+            f"• ⭐ Nível `{jogador['nivel']}`\n"
+            f"> {barra_xp(jogador)}"
         )
-        for indice, (_, jogador) in enumerate(ranking[:LIMITE_RANKING], start=1)
+        for indice, (_, jogador) in enumerate(jogadores_pagina, start=1)
     ]
     embed = discord.Embed(
         title="Tabela de experiência",
         description="\n".join(linhas) if linhas else "Nenhum jogador registrado.",
         colour=discord.Colour.gold(),
     )
-    embed.set_footer(text=f"Exibindo até {LIMITE_RANKING} jogadores")
+    total_paginas = max(1, (len(ranking) + LIMITE_RANKING - 1) // LIMITE_RANKING)
+    embed.set_footer(
+        text=f"Página {pagina}/{total_paginas} • {len(ranking)} jogadores registrados"
+    )
     return embed
+
+
+class RankingView(discord.ui.LayoutView):
+    def __init__(self, ranking: list[tuple[str, dict[str, Any]]]) -> None:
+        super().__init__(timeout=300)
+        self.ranking = ranking
+        self.pagina = 1
+        self.reconstruir_layout()
+
+    @property
+    def total_paginas(self) -> int:
+        return max(
+            1,
+            (len(self.ranking) + LIMITE_RANKING - 1) // LIMITE_RANKING,
+        )
+
+    def reconstruir_layout(self) -> None:
+        self.clear_items()
+        embed = criar_ranking_embed(self.ranking, self.pagina)
+        anterior = discord.ui.Button(
+            label="◀️",
+            style=discord.ButtonStyle.secondary,
+            disabled=self.pagina <= 1,
+        )
+        proxima = discord.ui.Button(
+            label="▶️",
+            style=discord.ButtonStyle.secondary,
+            disabled=self.pagina >= self.total_paginas,
+        )
+        anterior.callback = self._pagina_anterior
+        proxima.callback = self._proxima_pagina
+        self.add_item(
+            discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"# {embed.title}\n"
+                    f"## Página {self.pagina}\n\n"
+                    f"{embed.description or ''}"
+                ),
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                discord.ui.ActionRow(anterior, proxima),
+                discord.ui.TextDisplay(f"*{embed.footer.text}*"),
+                accent_color=discord.Colour.gold(),
+            )
+        )
+
+    async def _pagina_anterior(self, interaction: discord.Interaction) -> None:
+        if self.pagina > 1:
+            self.pagina -= 1
+        self.reconstruir_layout()
+        await interaction.response.edit_message(view=self)
+
+    async def _proxima_pagina(self, interaction: discord.Interaction) -> None:
+        if self.pagina < self.total_paginas:
+            self.pagina += 1
+        self.reconstruir_layout()
+        await interaction.response.edit_message(view=self)
 
 
 class FuteBot(commands.Bot):
@@ -1669,6 +1976,7 @@ async def defesa(
     banner="URL opcional do banner da ficha",
     imagem_arquivo="Arquivo opcional da imagem do atleta",
     banner_arquivo="Arquivo opcional do banner da ficha",
+    cor_embed="Cor opcional do embed em hexadecimal, por exemplo #5865F2",
 )
 @app_commands.choices(
     posicao=[
@@ -1676,9 +1984,13 @@ async def defesa(
         app_commands.Choice(name="Zagueiro", value="Zagueiro"),
         app_commands.Choice(name="Lateral", value="Lateral"),
         app_commands.Choice(name="Volante", value="Volante"),
-        app_commands.Choice(name="Meia", value="Meia"),
+        app_commands.Choice(name="Meia Central", value="Meia Central"),
+        app_commands.Choice(name="Meia Direita", value="Meia Direita"),
+        app_commands.Choice(name="Meia Esquerda", value="Meia Esquerda"),
+        app_commands.Choice(name="Meia-Atacante", value="Meia-Atacante"),
         app_commands.Choice(name="Ponta", value="Ponta"),
         app_commands.Choice(name="Atacante", value="Atacante"),
+        app_commands.Choice(name="Segundo Atacante", value="Segundo Atacante"),
     ],
     pe=[
         app_commands.Choice(name="Destro", value="Destro"),
@@ -1711,6 +2023,7 @@ async def criar(
     banner: str | None = None,
     imagem_arquivo: discord.Attachment | None = None,
     banner_arquivo: discord.Attachment | None = None,
+    cor_embed: str | None = None,
 ) -> None:
     if not 1 <= numero <= 99:
         await interaction.response.send_message(
@@ -1723,6 +2036,15 @@ async def criar(
             "Os campos informados não podem estar vazios.",
             ephemeral=True,
         )
+        return
+    try:
+        cor_embed = (
+            validar_hex_cor(cor_embed)
+            if cor_embed is not None
+            else None
+        )
+    except ValueError as erro:
+        await interaction.response.send_message(str(erro), ephemeral=True)
         return
     try:
         imagem = (
@@ -1762,14 +2084,20 @@ async def criar(
         "nacionalidade": nacionalidade.strip(),
         "imagem": imagem,
         "banner": banner,
+        "cor_embed": cor_embed,
     }
     preparar_jogador(jogador, nome.strip())
     jogadores[chave] = jogador
     salvar_jogadores(jogadores)
+    cor_banner = await obter_cor_embed(
+        jogador,
+        jogador.get("banner"),
+        discord.Colour.dark_green(),
+    )
 
     await interaction.response.send_message(
         view=criar_layout_view(
-            criar_personagem_embed(jogador),
+            criar_personagem_embed(jogador, cor_banner),
             content="Atleta criado com sucesso!",
         ),
     )
@@ -1787,6 +2115,7 @@ async def criar(
     imagem="Nova URL da imagem do atleta",
     banner="Nova URL do banner da ficha",
     imagem_atributos="Nova URL da imagem da tabela de atributos",
+    cor_embed="Nova cor opcional do embed em hexadecimal, por exemplo #5865F2",
     imagem_arquivo="Novo arquivo da imagem do atleta",
     banner_arquivo="Novo arquivo do banner da ficha",
     imagem_atributos_arquivo="Novo arquivo da imagem dos atributos",
@@ -1797,9 +2126,13 @@ async def criar(
         app_commands.Choice(name="Zagueiro", value="Zagueiro"),
         app_commands.Choice(name="Lateral", value="Lateral"),
         app_commands.Choice(name="Volante", value="Volante"),
-        app_commands.Choice(name="Meia", value="Meia"),
+        app_commands.Choice(name="Meia Central", value="Meia Central"),
+        app_commands.Choice(name="Meia Direita", value="Meia Direita"),
+        app_commands.Choice(name="Meia Esquerda", value="Meia Esquerda"),
+        app_commands.Choice(name="Meia-Atacante", value="Meia-Atacante"),
         app_commands.Choice(name="Ponta", value="Ponta"),
         app_commands.Choice(name="Atacante", value="Atacante"),
+        app_commands.Choice(name="Segundo Atacante", value="Segundo Atacante"),
     ],
     pe=[
         app_commands.Choice(name="Destro", value="Destro"),
@@ -1831,6 +2164,7 @@ async def editar(
     imagem: str | None = None,
     banner: str | None = None,
     imagem_atributos: str | None = None,
+    cor_embed: str | None = None,
     imagem_arquivo: discord.Attachment | None = None,
     banner_arquivo: discord.Attachment | None = None,
     imagem_atributos_arquivo: discord.Attachment | None = None,
@@ -1850,6 +2184,15 @@ async def editar(
             "O número da camisa deve estar entre 1 e 99.",
             ephemeral=True,
         )
+        return
+    try:
+        nova_cor_embed = (
+            validar_hex_cor(cor_embed)
+            if cor_embed is not None
+            else None
+        )
+    except ValueError as erro:
+        await interaction.followup.send(str(erro), ephemeral=True)
         return
     try:
         nova_imagem = (
@@ -1891,6 +2234,7 @@ async def editar(
         "imagem": nova_imagem,
         "banner": novo_banner,
         "imagem_atributos": nova_imagem_atributos,
+        "cor_embed": nova_cor_embed,
     }
     alteracoes.update(
         {campo: valor for campo, valor in valores.items() if valor is not None}
@@ -1914,9 +2258,14 @@ async def editar(
     jogador.update(alteracoes)
     preparar_jogador(jogador, str(jogador["nome"]))
     salvar_jogadores(jogadores)
+    cor_banner = await obter_cor_embed(
+        jogador,
+        jogador.get("banner"),
+        discord.Colour.dark_green(),
+    )
     await interaction.followup.send(
         view=criar_layout_view(
-            criar_personagem_embed(jogador),
+            criar_personagem_embed(jogador, cor_banner),
             content="Ficha atualizada com sucesso!",
         ),
     )
@@ -1944,8 +2293,13 @@ async def personagem(
 
     if preparar_jogador(jogador, alvo.display_name):
         salvar_jogadores(jogadores)
+    cor_banner = await obter_cor_embed(
+        jogador,
+        jogador.get("banner"),
+        discord.Colour.dark_green(),
+    )
     await interaction.response.send_message(
-        view=criar_layout_view(criar_personagem_embed(jogador))
+        view=criar_layout_view(criar_personagem_embed(jogador, cor_banner))
     )
 
 
@@ -1990,21 +2344,22 @@ async def atributos(
     elif preparar_jogador(jogador, alvo.display_name):
         salvar_jogadores(jogadores)
 
-    if usuario is None:
-        await interaction.response.send_message(
-            view=TabelaAtributosView(
-                jogador,
-                jogadores,
-                str(interaction.user.id),
-                interaction.user.id,
-            ),
-            ephemeral=True,
-        )
-    else:
-        await interaction.response.send_message(
-            embed=criar_atributos_embed(jogador),
-            ephemeral=True,
-        )
+    cor_banner = await obter_cor_embed(
+        jogador,
+        jogador.get("imagem_atributos"),
+        discord.Colour.green(),
+    )
+    await interaction.response.send_message(
+        view=TabelaAtributosView(
+            jogador,
+            jogadores,
+            str(alvo.id),
+            alvo.id,
+            cor_banner,
+            editavel=usuario is None,
+        ),
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(
@@ -2092,9 +2447,13 @@ async def distribuir_atributo(
         app_commands.Choice(name="Zagueiro", value="Zagueiro"),
         app_commands.Choice(name="Lateral", value="Lateral"),
         app_commands.Choice(name="Volante", value="Volante"),
-        app_commands.Choice(name="Meia", value="Meia"),
+        app_commands.Choice(name="Meia Central", value="Meia Central"),
+        app_commands.Choice(name="Meia Direita", value="Meia Direita"),
+        app_commands.Choice(name="Meia Esquerda", value="Meia Esquerda"),
+        app_commands.Choice(name="Meia-Atacante", value="Meia-Atacante"),
         app_commands.Choice(name="Ponta", value="Ponta"),
         app_commands.Choice(name="Atacante", value="Atacante"),
+        app_commands.Choice(name="Segundo Atacante", value="Segundo Atacante"),
     ],
     peso=[
         app_commands.Choice(name="Ectomorfo Magro / Seco", value="ectomorfo"),
@@ -2291,7 +2650,9 @@ async def ranking(interaction: discord.Interaction) -> None:
         key=lambda item: (int(item[1]["nivel"]), int(item[1]["xp"])),
         reverse=True,
     )
-    await interaction.response.send_message(embed=criar_ranking_embed(ranking_atual))
+    await interaction.response.send_message(
+        view=RankingView(ranking_atual)
+    )
 
 
 if __name__ == "__main__":
