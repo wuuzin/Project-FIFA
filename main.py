@@ -1309,17 +1309,36 @@ class TabelaAtributosView(discord.ui.LayoutView):
         aumentar.callback = self._aumentar_callback
         diminuir.callback = self._diminuir_callback
         salvar.callback = self._salvar_callback
-        self.add_item(
-            discord.ui.Container(
-                discord.ui.TextDisplay(
-                    "Selecione um atributo, use ➕ para adicionar pontos "
-                    "ou ➖ para remover um ponto. Clique em 💾 para salvar."
-                ),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.TextDisplay(criar_atributos_embed(self.jogador).description or ""),
+        children: list[discord.ui.Item] = [
+            discord.ui.TextDisplay(
+                "Selecione um atributo, use ➕ para adicionar pontos "
+                "ou ➖ para remover um ponto. Clique em 💾 para salvar."
+            ),
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            discord.ui.TextDisplay(
+                criar_atributos_embed(self.jogador).description or ""
+            ),
+        ]
+        imagem_atributos = self.jogador.get("imagem_atributos")
+        if imagem_atributos:
+            children.extend(
+                (
+                    discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                    discord.ui.MediaGallery(
+                        discord.MediaGalleryItem(str(imagem_atributos))
+                    ),
+                )
+            )
+        children.extend(
+            (
                 discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
                 discord.ui.ActionRow(aumentar, salvar, diminuir),
                 discord.ui.ActionRow(seletor),
+            )
+        )
+        self.add_item(
+            discord.ui.Container(
+                *children,
                 accent_color=discord.Colour.green(),
             )
         )
@@ -1965,46 +1984,6 @@ async def atributos(
                 ephemeral=True,
             )
             return
-        jogadores[str(interaction.user.id)] = jogador
-        preparar_jogador(jogador, interaction.user.display_name)
-        salvar_jogadores(jogadores)
-    elif preparar_jogador(jogador, alvo.display_name):
-        salvar_jogadores(jogadores)
-
-    if usuario is None:
-        await interaction.response.send_message(
-            view=TabelaAtributosView(
-                jogador,
-                jogadores,
-                str(interaction.user.id),
-                interaction.user.id,
-            ),
-            ephemeral=True,
-        )
-    else:
-        await interaction.response.send_message(
-            embed=criar_atributos_embed(jogador),
-            ephemeral=True,
-        )
-
-
-@bot.tree.command(name="atributo", description="Mostra os atributos de um atleta.")
-@app_commands.describe(usuario="Atleta cujos atributos serão exibidos")
-async def atributo(
-    interaction: discord.Interaction,
-    usuario: discord.User | None = None,
-) -> None:
-    jogadores = carregar_jogadores()
-    alvo = usuario or interaction.user
-    jogador = jogadores.get(str(alvo.id))
-    if jogador is None:
-        if usuario is not None:
-            await interaction.response.send_message(
-                f"{alvo.mention} ainda não possui uma ficha.",
-                ephemeral=True,
-            )
-            return
-        jogador = {"nome": interaction.user.display_name}
         jogadores[str(interaction.user.id)] = jogador
         preparar_jogador(jogador, interaction.user.display_name)
         salvar_jogadores(jogadores)
