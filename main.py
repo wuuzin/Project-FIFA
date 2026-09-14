@@ -855,13 +855,12 @@ def calcular_roll_personagem(
     modificador: str | int | float | None = None,
     variacao_dinamica: int | None = None,
 ) -> tuple[float, dict[str, float], list[tuple[str, int]], int, float, bool, str | None]:
-    """Avalia uma equação aritmética usando atributos efetivos e dados."""
+    """Avalia uma equação e aplica os multiplicadores ao resultado dos status."""
     if not equacao.strip() or len(equacao) > 200:
         raise ValueError("A equação deve ter entre 1 e 200 caracteres.")
 
-    valores_efetivos = atributos_efetivos(jogador)
     atributos = {
-        abreviacao: valores_efetivos[campo]
+        abreviacao: float(jogador[campo])
         for _, _, campo, abreviacao in ATRIBUTOS
     }
     valor_modificador, eh_percentual, atributo_modificado = (
@@ -874,18 +873,13 @@ def calcular_roll_personagem(
             raise ValueError(
                 f"O status {atributo_modificado.upper()} não existe na ficha."
             )
-        abreviacao = next(
-            abreviacao
-            for _, _, campo, abreviacao in ATRIBUTOS
-            if campo == atributo_modificado
-        )
-        if eh_percentual:
-            atributos[abreviacao] *= 1 + valor_modificador / 100
-        else:
-            atributos[abreviacao] += valor_modificador
-        atributos[abreviacao] = max(0.0, atributos[abreviacao])
     nomes = sorted(atributos, key=len, reverse=True)
     expressao = equacao.upper()
+    metricas_usadas = {
+        nome
+        for nome in re.findall(r"\b[A-Z][A-Z0-9_]*\b", expressao)
+        if nome in atributos
+    }
     dados: list[tuple[str, int]] = []
 
     def substituir_dado(correspondencia: re.Match[str]) -> str:
@@ -904,6 +898,13 @@ def calcular_roll_personagem(
         substituir_dado,
         expressao,
     )
+    percentuais = re.compile(r"(?<![A-Z0-9_.])([+-]?\d+(?:[.,]\d+)?)\s*%")
+
+    def substituir_percentual(correspondencia: re.Match[str]) -> str:
+        valor_percentual = float(correspondencia.group(1).replace(",", "."))
+        return str(valor_percentual / 100)
+
+    expressao = percentuais.sub(substituir_percentual, expressao)
     identificadores = set(re.findall(r"\b[A-Z][A-Z0-9_]*\b", expressao))
     desconhecidos = identificadores - set(nomes)
     if desconhecidos:
@@ -918,7 +919,10 @@ def calcular_roll_personagem(
     try:
         arvore = ast.parse(expressao, mode="eval")
     except SyntaxError as erro:
-        raise ValueError("Equação inválida. Use números, métricas e + - * / ( ).") from erro
+        raise ValueError(
+            "Equação inválida. Use números, métricas, percentuais (ex.: -10%) "
+            "e + - * / ( )."
+        ) from erro
 
     operadores = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd)
     for no in ast.walk(arvore):
@@ -946,17 +950,26 @@ def calcular_roll_personagem(
         raise ValueError("A variação dinâmica deve estar entre 80% e 120%.")
     total_dados = sum(resultado for _, resultado in dados)
     status_base = valor - total_dados
-    if atributo_modificado is None:
-        status_com_modificador = (
-            status_base * (1 + valor_modificador / 100)
-            if eh_percentual
-            else status_base + valor_modificador
-        )
-    else:
-        status_com_modificador = status_base
-    status_com_variacao = status_com_modificador * (variacao_dinamica / 100)
+    campos_usados = {
+        campo
+        for _, _, campo, abreviacao in ATRIBUTOS
+        if abreviacao in metricas_usadas
+    }
+    modificadores, _ = modificadores_contextuais(jogador)
+    percentual_contextual = sum(
+        modificadores.get(campo, 0) for campo in campos_usados
+    )
+    percentual_manual = valor_modificador if eh_percentual else 0
+    percentual_total = (
+        percentual_contextual + percentual_manual + variacao_dinamica - 100
+    )
+    valor_fixo = valor_modificador if not eh_percentual else 0
+    status_com_variacao = (
+        status_base * (1 + percentual_total / 100)
+        + valor_fixo
+    )
     return (
-        total_dados + status_com_variacao,
+        total_dados + max(0.0, status_com_variacao),
         atributos,
         dados,
         variacao_dinamica,
@@ -1098,6 +1111,7 @@ def calcular_teste_acao(
     dado: int | None = None,
     status_base_calculado: float | None = None,
     variacao_dinamica: int | None = None,
+    bonus_fixo: float = 0,
 ) -> dict[str, Any]:
     """Calcula uma ação usando 1d20, média de status e buff/debuff.
 
@@ -1130,11 +1144,7 @@ def calcular_teste_acao(
     fator_dinamico = variacao_dinamica / 100
     status_dinamico = status_base * fator_dinamico
     valor_modificador, eh_percentual = interpretar_modificador(modificador)
-    status_ajustado = (
-        status_dinamico * (1 + valor_modificador / 100)
-        if eh_percentual
-        else status_dinamico + valor_modificador
-    )
+    status_ajustado = status_dinamico + bonus_fixo
     status_ajustado = max(0.0, status_ajustado)
     total = resultado_dado + status_ajustado
 
@@ -1148,6 +1158,7 @@ def calcular_teste_acao(
         "status_dinamico": status_dinamico,
         "modificador": valor_modificador,
         "modificador_percentual": eh_percentual,
+        "bonus_fixo": bonus_fixo,
         "status_ajustado": status_ajustado,
         "total": total,
     }
@@ -1176,12 +1187,6 @@ def calcular_acao_individual(
         atributos,
     )
     valores_status = [float(jogador[campo]) for campo in atributos]
-    valores_status = aplicar_bonus_condicional(
-        jogador,
-        dados_acao,
-        atributos,
-        valores_status,
-    )
     valor_modificador, eh_percentual, atributo_modificado = (
         interpretar_modificador_status(modificador)
     )
@@ -1190,17 +1195,8 @@ def calcular_acao_individual(
             raise ValueError(
                 f"O status {atributo_modificado.upper()} não participa desta ação."
             )
-        indice = atributos.index(atributo_modificado)
-        if eh_percentual:
-            valores_status[indice] *= 1 + valor_modificador / 100
-        else:
-            valores_status[indice] += valor_modificador
-        valores_status[indice] = max(0.0, valores_status[indice])
     penalidade_campo = dados_acao.get("penalidade_atributo")
     penalidade = float(dados_acao.get("penalidade_valor", 0))
-    if penalidade_campo in atributos:
-        indice = atributos.index(penalidade_campo)
-        valores_status[indice] = max(0.0, valores_status[indice] + penalidade)
 
     formula_tipo = dados_acao.get("formula_tipo", "soma_dividida")
     divisor = float(dados_acao.get("divisor", len(valores_status)))
@@ -1239,14 +1235,31 @@ def calcular_acao_individual(
         modificadores_contextuais_acao.get(campo, 0)
         for campo in atributos
     )
-    status_base_com_buffs = status_base * (1 + percentual_contextual / 100)
+    percentual_modificador = valor_modificador if eh_percentual else 0
+    if variacao_dinamica is None:
+        variacao_dinamica = random.randint(80, 120)
+    if not 80 <= variacao_dinamica <= 120:
+        raise ValueError("A variação dinâmica deve estar entre 80% e 120%.")
+    percentual_total = (
+        percentual_contextual
+        + percentual_modificador
+        + variacao_dinamica
+        - 100
+    )
+    status_base_com_buffs = status_base * (1 + percentual_total / 100)
+    bonus_fixo = sum(bonus_condicionais.values())
+    if not eh_percentual:
+        bonus_fixo += valor_modificador
+    if penalidade_campo in atributos:
+        bonus_fixo += penalidade
     resultado = calcular_teste_acao(
         jogador,
         atributos,
-        modificador=None if atributo_modificado is not None else modificador,
+        modificador=None,
         dado=dado,
         status_base_calculado=status_base_com_buffs,
-        variacao_dinamica=variacao_dinamica,
+        variacao_dinamica=100,
+        bonus_fixo=bonus_fixo,
     )
     resultado.update(
         {
@@ -1271,8 +1284,12 @@ def calcular_acao_individual(
             },
             "bonus_condicionais": bonus_condicionais,
             "status_base_formula": status_base,
-            "percentual_contextual": percentual_contextual,
+            "percentual_contextual": percentual_total,
             "status_base_com_buffs": status_base_com_buffs,
+            "bonus_fixo": bonus_fixo,
+            "modificador": valor_modificador,
+            "modificador_percentual": eh_percentual,
+            "variacao_dinamica": variacao_dinamica,
         }
     )
     if atributo_modificado is not None:
@@ -1980,6 +1997,7 @@ def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
         f"**Status base:** `{resultado['status_base']:.2f}`\n"
         f"**Status com buffs:** `{resultado['status_base_com_buffs']:.2f}` "
         f"({resultado['percentual_contextual']:+g}%)\n"
+        f"**Valores fixos:** `{resultado.get('bonus_fixo', 0):+g}`\n"
         f"**Variação dinâmica:** `{fator}`\n"
         f"**Modificador:** `{texto_modificador}`\n"
         f"**Buffs aplicados:** {texto_buffs}\n"
@@ -2573,7 +2591,7 @@ async def xp(interaction: discord.Interaction) -> None:
     description="Rola uma equação usando os atributos da sua ficha.",
 )
 @app_commands.describe(
-    equacao="Ex.: 1d20 + ((FIS + VEL) / 2)",
+    equacao="Ex.: 1d20 + ((FIS - 10% + VEL) / 2)",
     modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível somente para administradores",
@@ -2638,13 +2656,43 @@ async def roll(
         return
 
     valores_dados = sum(valor for _, valor in dados)
-    status_com_buffs = resultado - valores_dados
-    status_base = status_com_buffs / (variacao_dinamica / 100)
+    expressao_roll = equacao.upper()
+    metricas_usadas = {
+        nome
+        for nome in re.findall(r"\b[A-Z][A-Z0-9_]*\b", expressao_roll)
+        if nome in {abreviacao for _, _, _, abreviacao in ATRIBUTOS}
+    }
+    modificadores, _ = modificadores_contextuais(jogador)
+    campos_usados = {
+        campo
+        for _, _, campo, abreviacao in ATRIBUTOS
+        if abreviacao in metricas_usadas
+    }
+    percentual_contextual = sum(
+        modificadores.get(campo, 0) for campo in campos_usados
+    )
+    percentual_total = (
+        percentual_contextual
+        + (valor_modificador if eh_percentual else 0)
+        + variacao_dinamica
+        - 100
+    )
+    valor_fixo = valor_modificador if not eh_percentual else 0
+    status_com_buffs = float(resultado - valores_dados)
+    multiplicador_total = 1 + percentual_total / 100
+    status_base = (
+        (status_com_buffs - valor_fixo) / multiplicador_total
+        if multiplicador_total
+        else 0.0
+    )
+    status_com_buffs = (
+        status_base * (1 + percentual_total / 100)
+        + valor_fixo
+    )
     sufixo_modificador = "%" if eh_percentual else ""
     texto_modificador = f"{valor_modificador:g}{sufixo_modificador}"
     if atributo_modificado:
         texto_modificador += f" {atributo_modificado.upper()}"
-    modificadores, _ = modificadores_contextuais(jogador)
     linhas_buffs = []
     for campo, percentual in modificadores.items():
         abreviacao = next(
@@ -2666,7 +2714,8 @@ async def roll(
             f"\n"
             f"**D20:** {texto_d20}\n"
             f"**Status base:** `{status_base:.2f}`\n"
-            f"**Status com buffs:** `{status_com_buffs:.2f}` (+0%)\n"
+            f"**Status com buffs:** `{status_com_buffs:.2f}` "
+            f"({percentual_total:+g}%)\n"
             f"**Variação dinâmica:** `{variacao_dinamica}%`\n"
             f"**Modificador:** `{texto_modificador}`\n"
             f"**Buffs aplicados:** {texto_buffs}\n"
