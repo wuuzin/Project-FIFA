@@ -1,5 +1,7 @@
 import asyncio
+import ast
 import json
+import math
 import io
 import os
 import random
@@ -33,7 +35,6 @@ ATRIBUTOS = (
     ("🤝", "Passe", "passe", "PAS"),
     ("🛡️", "Defesa", "defesa", "DEF"),
     ("👁️", "Visão", "visao", "VIS"),
-    ("🫁", "Resistência", "resistencia", "RES"),
     ("⚡", "Estamina", "estamina", "EST"),
 )
 ATRIBUTOS_EDITAVEIS = {campo for _, _, campo, _ in ATRIBUTOS}
@@ -60,8 +61,8 @@ MODIFICADORES_POSICAO = {
 }
 MODIFICADORES_PORTE = {
     "ectomorfo": {"velocidade": 15, "fisico": -15},
-    "atletico": {"resistencia": 10, "fisico": -5},
-    "equilibrado": {"resistencia": 5},
+    "atletico": {"fisico": -5},
+    "equilibrado": {},
     "mesomorfo": {"fisico": 10, "chute": 5},
     "tanque": {"fisico": 20, "velocidade": -15},
 }
@@ -737,6 +738,32 @@ def salvar_jogadores(jogadores: dict[str, dict[str, Any]]) -> None:
         json.dump(jogadores, arquivo, ensure_ascii=False, indent=2)
 
 
+def normalizar_nome_busca(nome: str) -> str:
+    normalizado = unicodedata.normalize("NFKD", nome.strip().casefold())
+    return "".join(
+        caractere
+        for caractere in normalizado
+        if not unicodedata.combining(caractere)
+    )
+
+
+def localizar_jogador_por_nome(
+    jogadores: dict[str, dict[str, Any]],
+    nome: str,
+) -> tuple[str, dict[str, Any]] | None:
+    procurado = normalizar_nome_busca(nome)
+    encontrados = [
+        (chave, jogador)
+        for chave, jogador in jogadores.items()
+        if normalizar_nome_busca(str(jogador.get("nome", ""))) == procurado
+    ]
+    if len(encontrados) == 1:
+        return encontrados[0]
+    if len(encontrados) > 1:
+        raise ValueError("Há mais de um personagem com esse nome.")
+    return None
+
+
 def interpretar_atributos_bot(valor: str) -> dict[str, int]:
     """Lê atributos no formato ``FIS=80 TEC=70 VIS=65``."""
     atributos = {
@@ -822,9 +849,157 @@ def interpretar_modificador_status(
     return valor_numerico, percentual == "%", atributo
 
 
+def calcular_roll_personagem(
+    jogador: dict[str, Any],
+    equacao: str,
+    modificador: str | int | float | None = None,
+    variacao_dinamica: int | None = None,
+) -> tuple[float, dict[str, float], list[tuple[str, int]], int, float, bool, str | None]:
+    """Avalia uma equação aritmética usando atributos efetivos e dados."""
+    if not equacao.strip() or len(equacao) > 200:
+        raise ValueError("A equação deve ter entre 1 e 200 caracteres.")
+
+    valores_efetivos = atributos_efetivos(jogador)
+    atributos = {
+        abreviacao: valores_efetivos[campo]
+        for _, _, campo, abreviacao in ATRIBUTOS
+    }
+    valor_modificador, eh_percentual, atributo_modificado = (
+        interpretar_modificador_status(modificador)
+    )
+    if atributo_modificado is not None:
+        if atributo_modificado not in {
+            campo for _, _, campo, _ in ATRIBUTOS
+        }:
+            raise ValueError(
+                f"O status {atributo_modificado.upper()} não existe na ficha."
+            )
+        abreviacao = next(
+            abreviacao
+            for _, _, campo, abreviacao in ATRIBUTOS
+            if campo == atributo_modificado
+        )
+        if eh_percentual:
+            atributos[abreviacao] *= 1 + valor_modificador / 100
+        else:
+            atributos[abreviacao] += valor_modificador
+        atributos[abreviacao] = max(0.0, atributos[abreviacao])
+    nomes = sorted(atributos, key=len, reverse=True)
+    expressao = equacao.upper()
+    dados: list[tuple[str, int]] = []
+
+    def substituir_dado(correspondencia: re.Match[str]) -> str:
+        quantidade = int(correspondencia.group(1) or 1)
+        lados = int(correspondencia.group(2))
+        if quantidade < 1 or quantidade > 20 or lados < 2 or lados > 1000:
+            raise ValueError("Dados permitidos: até 20 dados com 2 a 1000 lados.")
+        resultados = [random.randint(1, lados) for _ in range(quantidade)]
+        dados.extend(
+            (f"{quantidade}d{lados}", resultado) for resultado in resultados
+        )
+        return str(sum(resultados))
+
+    expressao = re.sub(
+        r"(?<![A-Z0-9_])(\d*)D(\d+)(?![A-Z0-9_])",
+        substituir_dado,
+        expressao,
+    )
+    identificadores = set(re.findall(r"\b[A-Z][A-Z0-9_]*\b", expressao))
+    desconhecidos = identificadores - set(nomes)
+    if desconhecidos:
+        nomes_validos = ", ".join(nomes)
+        raise ValueError(
+            f"Métrica(s) inválida(s): {', '.join(sorted(desconhecidos))}. "
+            f"Use: {nomes_validos}."
+        )
+    for nome in nomes:
+        expressao = re.sub(rf"\b{nome}\b", str(atributos[nome]), expressao)
+
+    try:
+        arvore = ast.parse(expressao, mode="eval")
+    except SyntaxError as erro:
+        raise ValueError("Equação inválida. Use números, métricas e + - * / ( ).") from erro
+
+    operadores = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd)
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Expression | ast.Constant):
+            continue
+        if isinstance(no, ast.operator | ast.unaryop):
+            if not isinstance(no, operadores):
+                raise ValueError("A equação contém uma operação não permitida.")
+            continue
+        if isinstance(no, ast.BinOp) and isinstance(no.op, operadores):
+            continue
+        if isinstance(no, ast.UnaryOp) and isinstance(no.op, operadores):
+            continue
+        raise ValueError("A equação contém uma operação não permitida.")
+
+    try:
+        valor = float(_avaliar_arvore_roll(arvore.body))
+    except (ZeroDivisionError, ValueError, TypeError) as erro:
+        raise ValueError("Não foi possível calcular essa equação.") from erro
+    if not math.isfinite(valor):
+        raise ValueError("O resultado da equação precisa ser finito.")
+    if variacao_dinamica is None:
+        variacao_dinamica = random.randint(80, 120)
+    if not 80 <= variacao_dinamica <= 120:
+        raise ValueError("A variação dinâmica deve estar entre 80% e 120%.")
+    total_dados = sum(resultado for _, resultado in dados)
+    status_base = valor - total_dados
+    if atributo_modificado is None:
+        status_com_modificador = (
+            status_base * (1 + valor_modificador / 100)
+            if eh_percentual
+            else status_base + valor_modificador
+        )
+    else:
+        status_com_modificador = status_base
+    status_com_variacao = status_com_modificador * (variacao_dinamica / 100)
+    return (
+        total_dados + status_com_variacao,
+        atributos,
+        dados,
+        variacao_dinamica,
+        valor_modificador,
+        eh_percentual,
+        atributo_modificado,
+    )
+
+
+def _avaliar_arvore_roll(no: ast.AST) -> float:
+    if isinstance(no, ast.Constant) and isinstance(no.value, (int, float)):
+        return float(no.value)
+    if isinstance(no, ast.BinOp):
+        esquerda = _avaliar_arvore_roll(no.left)
+        direita = _avaliar_arvore_roll(no.right)
+        if isinstance(no.op, ast.Add):
+            return esquerda + direita
+        if isinstance(no.op, ast.Sub):
+            return esquerda - direita
+        if isinstance(no.op, ast.Mult):
+            return esquerda * direita
+        if isinstance(no.op, ast.Div):
+            return esquerda / direita
+    if isinstance(no, ast.UnaryOp):
+        valor = _avaliar_arvore_roll(no.operand)
+        if isinstance(no.op, ast.USub):
+            return -valor
+        if isinstance(no.op, ast.UAdd):
+            return valor
+    raise ValueError("Nó de equação não permitido.")
+
+
 def modificadores_contextuais(jogador: dict[str, Any]) -> tuple[dict[str, int], float]:
     modificadores: dict[str, int] = {}
-    posicao = str(jogador.get("posicao"))
+    posicao = str(jogador.get("posicao")).casefold()
+    posicoes = {
+        unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode().casefold(): nome
+        for nome in MODIFICADORES_POSICAO
+    }
+    posicao = posicoes.get(
+        unicodedata.normalize("NFKD", posicao).encode("ascii", "ignore").decode(),
+        posicao,
+    )
     for grupo in (
         MODIFICADORES_POSICAO.get(posicao, {}),
         bonus_dominancia_meia(jogador),
@@ -834,7 +1009,9 @@ def modificadores_contextuais(jogador: dict[str, Any]) -> tuple[dict[str, int], 
         for campo, percentual in grupo.items():
             modificadores[campo] = modificadores.get(campo, 0) + percentual
 
-    fator_estamina = 1.05 if jogador.get("peso") == "atletico" else 1.0
+    fator_estamina = (
+        1.05 if jogador.get("peso") in {"atletico", "equilibrado"} else 1.0
+    )
     return modificadores, fator_estamina
 
 
@@ -862,13 +1039,16 @@ def atributos_efetivos(jogador: dict[str, Any]) -> dict[str, float]:
 
 
 def bonus_dominancia_meia(jogador: dict[str, Any]) -> dict[str, int]:
-    """Retorna o bônus de PAS das meias direita/esquerda quando aplicável."""
-    posicao = str(jogador.get("posicao"))
-    pe = str(jogador.get("pe"))
-    if posicao == "Meia Direita" and pe in {"Destro", "Ambidestro"}:
-        return {"passe": 5}
-    if posicao == "Meia Esquerda" and pe in {"Canhoto", "Ambidestro"}:
-        return {"passe": 5}
+    """Retorna o bônus de 10% em PAS das meias direita/esquerda."""
+    normalizar = lambda valor: unicodedata.normalize(
+        "NFKD", str(valor)
+    ).encode("ascii", "ignore").decode().casefold()
+    posicao = normalizar(jogador.get("posicao"))
+    pe = normalizar(jogador.get("pe"))
+    if posicao == "meia direita" and pe in {"destro", "ambidestro"}:
+        return {"passe": 10}
+    if posicao == "meia esquerda" and pe in {"canhoto", "ambidestro"}:
+        return {"passe": 10}
     return {}
 
 
@@ -892,6 +1072,23 @@ def aplicar_bonus_condicional(
                     indice = atributos.index(atributo)
                     valores_ajustados[indice] += float(bonus)
     return valores_ajustados
+
+
+def bonus_condicionais_aplicados(
+    jogador: dict[str, Any],
+    dados_acao: dict[str, Any],
+    atributos: tuple[str, ...],
+) -> dict[str, float]:
+    aplicados: dict[str, float] = {}
+    for campo_condicao, opcoes in dados_acao.get("bonus_condicional", {}).items():
+        valor_jogador = str(jogador.get(campo_condicao)).casefold()
+        for valor_esperado, bonus_por_atributo in opcoes.items():
+            if valor_jogador != str(valor_esperado).casefold():
+                continue
+            for atributo, bonus in bonus_por_atributo.items():
+                if atributo in atributos:
+                    aplicados[atributo] = aplicados.get(atributo, 0) + float(bonus)
+    return aplicados
 
 
 def calcular_teste_acao(
@@ -972,12 +1169,13 @@ def calcular_acao_individual(
         raise ValueError(f"Ação individual não encontrada: {acao}.")
 
     atributos = tuple(dados_acao["atributos"])
-    valores_status = [float(jogador[campo]) for campo in atributos]
-    valores_status = aplicar_modificadores_contextuais(
+    modificadores_contextuais_acao, _ = modificadores_contextuais(jogador)
+    bonus_condicionais = bonus_condicionais_aplicados(
         jogador,
+        dados_acao,
         atributos,
-        valores_status,
     )
+    valores_status = [float(jogador[campo]) for campo in atributos]
     valores_status = aplicar_bonus_condicional(
         jogador,
         dados_acao,
@@ -1037,12 +1235,17 @@ def calcular_acao_individual(
     else:
         raise ValueError(f"Tipo de fórmula não suportado: {formula_tipo}.")
 
+    percentual_contextual = sum(
+        modificadores_contextuais_acao.get(campo, 0)
+        for campo in atributos
+    )
+    status_base_com_buffs = status_base * (1 + percentual_contextual / 100)
     resultado = calcular_teste_acao(
         jogador,
         atributos,
         modificador=None if atributo_modificado is not None else modificador,
         dado=dado,
-        status_base_calculado=status_base,
+        status_base_calculado=status_base_com_buffs,
         variacao_dinamica=variacao_dinamica,
     )
     resultado.update(
@@ -1061,6 +1264,15 @@ def calcular_acao_individual(
             "bonus_resultado": dados_acao.get("bonus_resultado", 0),
             "status_base": status_base,
             "modificador_status": atributo_modificado,
+            "modificadores_contextuais": {
+                campo: percentual
+                for campo, percentual in modificadores_contextuais_acao.items()
+                if campo in atributos and percentual
+            },
+            "bonus_condicionais": bonus_condicionais,
+            "status_base_formula": status_base,
+            "percentual_contextual": percentual_contextual,
+            "status_base_com_buffs": status_base_com_buffs,
         }
     )
     if atributo_modificado is not None:
@@ -1126,6 +1338,9 @@ def calcular_xp_limite(nivel: int) -> int:
 
 def preparar_jogador(jogador: dict[str, Any], nome: str) -> bool:
     mudou = False
+    if "resistencia" in jogador:
+        del jogador["resistencia"]
+        mudou = True
     defaults = {
         "nome": nome,
         "posicao": "Não definida",
@@ -1377,18 +1592,17 @@ def criar_atributos_embed(
             f"{barra_atributo(valor)}"
         )
 
+    cabecalho = (
+        f"**⭐ Nível:** `{jogador.get('nivel', 0)}`  •  "
+        f"**🎯 Pontos disponíveis:** `{jogador.get('pontos_disponiveis', 0)}`"
+    )
     embed = discord.Embed(
         title=f"Atributos de {jogador['nome']}",
-        description="\n\n".join(linhas),
+        description=f"{cabecalho}\n\n" + "\n\n".join(linhas),
         colour=cor or discord.Colour.green(),
     )
     if jogador.get("imagem_atributos"):
         embed.set_image(url=str(jogador["imagem_atributos"]))
-    embed.add_field(
-        name="🎯 Pontos disponíveis",
-        value=f"`{jogador['pontos_disponiveis']}`",
-        inline=False,
-    )
     embed.set_footer(text="Tabela de atributos • FuteBot")
     return embed
 
@@ -1502,7 +1716,7 @@ class TabelaAtributosView(discord.ui.LayoutView):
         valor_atual = int(self.jogador.get(campo, 0))
         if delta > 0 and (pontos < delta or valor_atual + delta > VALOR_MAXIMO_ATRIBUTO):
             return
-        if delta < 0 and valor_atual + delta < 0:
+        if delta < 0 and valor_atual + delta < VALOR_INICIAL_ATRIBUTO:
             return
         self.jogador[campo] = valor_atual + delta
         self.jogador["pontos_disponiveis"] = pontos - delta
@@ -1529,29 +1743,19 @@ class TabelaAtributosView(discord.ui.LayoutView):
                 or valor_atual >= VALOR_MAXIMO_ATRIBUTO
             ),
         )
-        diminuir = discord.ui.Button(
-            label="➖",
-            style=discord.ButtonStyle.secondary,
-            disabled=(
-                not self.editavel
-                or self.salvo
-                or self.atributo_selecionado is None
-                or valor_atual <= 0
-            ),
-        )
         salvar = discord.ui.Button(
             label="💾",
             style=discord.ButtonStyle.primary,
             disabled=not self.editavel or self.salvo,
         )
         aumentar.callback = self._aumentar_callback
-        diminuir.callback = self._diminuir_callback
         salvar.callback = self._salvar_callback
         children: list[discord.ui.Item] = [
             discord.ui.TextDisplay(
                 (
-                    "Selecione um atributo, use ➕ para adicionar pontos "
-                    "ou ➖ para remover um ponto. Clique em 💾 para salvar."
+                    "Selecione um atributo, use ➕ para adicionar pontos. "
+                    "Os atributos não podem ser reduzidos abaixo de 10. "
+                    "Clique em 💾 para salvar."
                     if self.editavel
                     else "Tabela de atributos em modo somente leitura."
                 )
@@ -1574,7 +1778,7 @@ class TabelaAtributosView(discord.ui.LayoutView):
         children.extend(
             (
                 discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.ActionRow(aumentar, salvar, diminuir),
+                discord.ui.ActionRow(aumentar, salvar),
                 discord.ui.ActionRow(seletor),
             )
         )
@@ -1591,11 +1795,6 @@ class TabelaAtributosView(discord.ui.LayoutView):
 
     async def _aumentar_callback(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_modal(QuantidadeAtributoModal(self))
-
-    async def _diminuir_callback(self, interaction: discord.Interaction) -> None:
-        if self.atributo_selecionado:
-            self.alterar_atributo(self.atributo_selecionado, -1)
-        await self.atualizar_mensagem(interaction)
 
     async def _salvar_callback(self, interaction: discord.Interaction) -> None:
         self.salvo = True
@@ -1753,6 +1952,24 @@ def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
     texto_modificador = f"{modificador:g}{sufixo_modificador}"
     if status_modificador:
         texto_modificador += f" {status_modificador.upper()}"
+    modificadores = resultado.get("modificadores_contextuais", {})
+    bonus_condicionais = resultado.get("bonus_condicionais", {})
+    linhas_buffs = []
+    for campo, percentual in modificadores.items():
+        abreviacao = next(
+            abreviacao
+            for _, _, nome_campo, abreviacao in ATRIBUTOS
+            if nome_campo == campo
+        )
+        linhas_buffs.append(f"`{abreviacao}` {percentual:+g}%")
+    for campo, bonus in bonus_condicionais.items():
+        abreviacao = next(
+            abreviacao
+            for _, _, nome_campo, abreviacao in ATRIBUTOS
+            if nome_campo == campo
+        )
+        linhas_buffs.append(f"`{abreviacao}` {bonus:+g} (bônus da tática)")
+    texto_buffs = ", ".join(linhas_buffs) if linhas_buffs else "Nenhum"
     descricao = (
         f"## ﹙⚽﹚ {resultado['categoria']}\n"
         f"# {resultado['nome_acao']}\n\n"
@@ -1761,8 +1978,11 @@ def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
         f"\n"
         f"**D20:** `{resultado['d20']}`\n"
         f"**Status base:** `{resultado['status_base']:.2f}`\n"
+        f"**Status com buffs:** `{resultado['status_base_com_buffs']:.2f}` "
+        f"({resultado['percentual_contextual']:+g}%)\n"
         f"**Variação dinâmica:** `{fator}`\n"
         f"**Modificador:** `{texto_modificador}`\n"
+        f"**Buffs aplicados:** {texto_buffs}\n"
         f"## Total: `{resultado['total']}`"
     )
     embed = discord.Embed(
@@ -2272,14 +2492,41 @@ async def editar(
 
 
 @bot.tree.command(name="personagem", description="Mostra a ficha de um atleta.")
-@app_commands.describe(usuario="Atleta cuja ficha será exibida")
+@app_commands.describe(
+    usuario="Usuário cuja ficha será exibida",
+    personagem_nome="Nome exato do personagem cuja ficha será exibida",
+)
 async def personagem(
     interaction: discord.Interaction,
     usuario: discord.User | None = None,
+    personagem_nome: str | None = None,
 ) -> None:
+    if usuario is not None and personagem_nome:
+        await interaction.response.send_message(
+            "Informe usuário ou nome do personagem, não os dois.",
+            ephemeral=True,
+        )
+        return
     jogadores = carregar_jogadores()
     alvo = usuario or interaction.user
-    jogador = jogadores.get(str(alvo.id))
+    chave = str(alvo.id)
+    if personagem_nome:
+        try:
+            encontrado = localizar_jogador_por_nome(jogadores, personagem_nome)
+        except ValueError as erro:
+            await interaction.response.send_message(str(erro), ephemeral=True)
+            return
+        if encontrado is None:
+            await interaction.response.send_message(
+                "Nenhum personagem foi encontrado com esse nome.",
+                ephemeral=True,
+            )
+            return
+        chave, jogador = encontrado
+        nome_atualizacao = str(jogador.get("nome", personagem_nome))
+    else:
+        jogador = jogadores.get(chave)
+        nome_atualizacao = alvo.display_name
     if jogador is None:
         await interaction.response.send_message(
             (
@@ -2291,7 +2538,7 @@ async def personagem(
         )
         return
 
-    if preparar_jogador(jogador, alvo.display_name):
+    if preparar_jogador(jogador, nome_atualizacao):
         salvar_jogadores(jogadores)
     cor_banner = await obter_cor_embed(
         jogador,
@@ -2321,15 +2568,152 @@ async def xp(interaction: discord.Interaction) -> None:
     )
 
 
+@bot.tree.command(
+    name="roll",
+    description="Rola uma equação usando os atributos da sua ficha.",
+)
+@app_commands.describe(
+    equacao="Ex.: 1d20 + ((FIS + VEL) / 2)",
+    modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    bot_alvo="Nome do bot criado; disponível somente para administradores",
+)
+async def roll(
+    interaction: discord.Interaction,
+    equacao: str,
+    modificador: str | None = None,
+    variacao_dinamica: int | None = None,
+    bot_alvo: str | None = None,
+) -> None:
+    jogadores = carregar_jogadores()
+    chave_jogador = str(interaction.user.id)
+    nome_exibicao = interaction.user.display_name
+    if bot_alvo:
+        if not interaction.guild or not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                "Somente administradores podem usar bots no `/roll`.",
+                ephemeral=True,
+            )
+            return
+        chave_nome = unicodedata.normalize("NFKD", bot_alvo.strip().lower())
+        chave_nome = "".join(
+            caractere
+            for caractere in chave_nome
+            if not unicodedata.combining(caractere)
+        )
+        chave_nome = re.sub(r"[^a-z0-9]+", "_", chave_nome).strip("_")
+        chave_jogador = f"bot:{chave_nome}"
+        nome_exibicao = bot_alvo.strip()
+
+    jogador = jogadores.get(chave_jogador)
+    if jogador is None:
+        await interaction.response.send_message(
+            (
+                "Esse bot não existe. Confira o nome usado em `/criar_bot`."
+                if bot_alvo
+                else "Você ainda não possui uma ficha. Use `/criar` primeiro."
+            ),
+            ephemeral=True,
+        )
+        return
+
+    preparar_jogador(jogador, nome_exibicao)
+    try:
+        (
+            resultado,
+            _,
+            dados,
+            variacao_dinamica,
+            valor_modificador,
+            eh_percentual,
+            atributo_modificado,
+        ) = calcular_roll_personagem(
+            jogador,
+            equacao,
+            modificador,
+            variacao_dinamica,
+        )
+    except ValueError as erro:
+        await interaction.response.send_message(str(erro), ephemeral=True)
+        return
+
+    valores_dados = sum(valor for _, valor in dados)
+    status_com_buffs = resultado - valores_dados
+    status_base = status_com_buffs / (variacao_dinamica / 100)
+    sufixo_modificador = "%" if eh_percentual else ""
+    texto_modificador = f"{valor_modificador:g}{sufixo_modificador}"
+    if atributo_modificado:
+        texto_modificador += f" {atributo_modificado.upper()}"
+    modificadores, _ = modificadores_contextuais(jogador)
+    linhas_buffs = []
+    for campo, percentual in modificadores.items():
+        abreviacao = next(
+            abreviacao
+            for _, _, nome_campo, abreviacao in ATRIBUTOS
+            if nome_campo == campo
+        )
+        linhas_buffs.append(f"`{abreviacao}` {percentual:+g}%")
+    texto_buffs = ", ".join(linhas_buffs) if linhas_buffs else "Nenhum"
+    texto_d20 = (
+        ", ".join(f"`{nome}` = `{valor}`" for nome, valor in dados)
+        if dados
+        else "Nenhum"
+    )
+    embed = discord.Embed(
+        title=f"Roll de {jogador['nome']}",
+        description=(
+            f"**Fórmula:** `{equacao}`\n"
+            f"\n"
+            f"**D20:** {texto_d20}\n"
+            f"**Status base:** `{status_base:.2f}`\n"
+            f"**Status com buffs:** `{status_com_buffs:.2f}` (+0%)\n"
+            f"**Variação dinâmica:** `{variacao_dinamica}%`\n"
+            f"**Modificador:** `{texto_modificador}`\n"
+            f"**Buffs aplicados:** {texto_buffs}\n"
+            f"\n"
+            f"## Total: `{round(resultado)}`"
+        ),
+        colour=discord.Colour.orange(),
+    )
+    await interaction.response.send_message(embed=embed)
+
+
 @bot.tree.command(name="atributos", description="Mostra a tabela de atributos de um atleta.")
-@app_commands.describe(usuario="Atleta cujos atributos serão exibidos")
+@app_commands.describe(
+    usuario="Usuário cujos atributos serão exibidos",
+    personagem_nome="Nome exato do personagem cujos atributos serão exibidos",
+)
 async def atributos(
     interaction: discord.Interaction,
     usuario: discord.User | None = None,
+    personagem_nome: str | None = None,
 ) -> None:
+    if usuario is not None and personagem_nome:
+        await interaction.response.send_message(
+            "Informe usuário ou nome do personagem, não os dois.",
+            ephemeral=True,
+        )
+        return
     jogadores = carregar_jogadores()
     alvo = usuario or interaction.user
-    jogador = jogadores.get(str(alvo.id))
+    chave = str(alvo.id)
+    if personagem_nome:
+        try:
+            encontrado = localizar_jogador_por_nome(jogadores, personagem_nome)
+        except ValueError as erro:
+            await interaction.response.send_message(str(erro), ephemeral=True)
+            return
+        if encontrado is None:
+            await interaction.response.send_message(
+                "Nenhum personagem foi encontrado com esse nome.",
+                ephemeral=True,
+            )
+            return
+        chave, jogador = encontrado
+        nome_atualizacao = str(jogador.get("nome", personagem_nome))
+    else:
+        jogador = jogadores.get(chave)
+        nome_atualizacao = alvo.display_name
     if jogador is None:
         jogador = {"nome": interaction.user.display_name}
         if usuario is not None:
@@ -2338,10 +2722,10 @@ async def atributos(
                 ephemeral=True,
             )
             return
-        jogadores[str(interaction.user.id)] = jogador
-        preparar_jogador(jogador, interaction.user.display_name)
+        jogadores[chave] = jogador
+        preparar_jogador(jogador, nome_atualizacao)
         salvar_jogadores(jogadores)
-    elif preparar_jogador(jogador, alvo.display_name):
+    elif preparar_jogador(jogador, nome_atualizacao):
         salvar_jogadores(jogadores)
 
     cor_banner = await obter_cor_embed(
@@ -2353,12 +2737,11 @@ async def atributos(
         view=TabelaAtributosView(
             jogador,
             jogadores,
-            str(alvo.id),
-            alvo.id,
+            chave,
+            interaction.user.id,
             cor_banner,
-            editavel=usuario is None,
+            editavel=usuario is None and personagem_nome is None,
         ),
-        ephemeral=True,
     )
 
 
@@ -2439,7 +2822,6 @@ async def distribuir_atributo(
     pas="Valor de PAS entre 0 e 100",
     defesa="Valor de DEF entre 0 e 100",
     vis="Valor de VIS entre 0 e 100",
-    res="Valor de RES entre 0 e 100",
     est="Valor de EST entre 0 e 100",
 )
 @app_commands.choices(
@@ -2475,7 +2857,6 @@ async def criar_bot(
     pas: int,
     defesa: int,
     vis: int,
-    res: int,
     est: int,
 ) -> None:
     nome_limpo = nome.strip()
@@ -2502,13 +2883,12 @@ async def criar_bot(
         "passe": pas,
         "defesa": defesa,
         "visao": vis,
-        "resistencia": res,
         "estamina": est,
     }
     atributos_invalidos = [
         abreviacao
         for abreviacao, valor in zip(
-            ("FIS", "VEL", "TEC", "CHU", "PAS", "DEF", "VIS", "RES", "EST"),
+            ("FIS", "VEL", "TEC", "CHU", "PAS", "DEF", "VIS", "EST"),
             valores_atributos.values(),
         )
         if not 0 <= valor <= VALOR_MAXIMO_ATRIBUTO
