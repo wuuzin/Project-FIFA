@@ -326,7 +326,8 @@ ACOES_INDIVIDUAIS = {
         "divisor": 2,
         "execucao": "Arremate de média ou longa distância em que a bola oscila antes de cair bruscamente.",
         "efeito": "Aplica -3 em DEF e -2 em VIS no goleiro, dificultando a leitura da trajetória.",
-        "falha": "Total inferior a 10 isola a bola por cima do travessão.",
+        "bonus_condicional": {"peso": {"equilibrado": {"chute": 5}}},
+        "falha": "Se o resultado do d20 for inferior a 7, a bola isola por cima do travessão.",
     },
     "chute_de_letra_calcanhar": {
         "nome": "Chute de Letra / Calcanhar",
@@ -339,6 +340,7 @@ ACOES_INDIVIDUAIS = {
         "divisor": 3,
         "condicao": "Exige estar a 1 zona do gol, de costas ou em ângulo desfavorável.",
         "efeito": "Engana a leitura do goleiro e reduz pela metade a pontuação final da defesa.",
+        "bonus_condicional": {"altura": {"baixo": {"chute": 5}}},
         "falha": "O atacante se confunde, perde a posse instantaneamente e não efetua o chute.",
     },
     "voleio": {
@@ -352,7 +354,8 @@ ACOES_INDIVIDUAIS = {
         "divisor": 2,
         "execucao": "Rebate a bola no ar assim que ela cai de um passe ou cruzamento.",
         "efeito": "Aumenta a velocidade da bola, aplicando +5 ao resultado final do chute.",
-        "falha": "Total inferior a 13 faz o atleta errar a bola e entregar a posse ao inimigo.",
+        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
+        "falha": "Se o resultado do d20 for inferior a 10, o atleta erra a bola e entrega a posse ao inimigo.",
         "bonus_resultado": 5,
     },
     "passe_curto": {
