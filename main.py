@@ -1186,7 +1186,11 @@ def calcular_acao_individual(
         dados_acao,
         atributos,
     )
-    valores_status = [float(jogador[campo]) for campo in atributos]
+    valores_status = [
+        float(jogador[campo])
+        * (1 + modificadores_contextuais_acao.get(campo, 0) / 100)
+        for campo in atributos
+    ]
     valor_modificador, eh_percentual, atributo_modificado = (
         interpretar_modificador_status(modificador)
     )
@@ -1231,21 +1235,12 @@ def calcular_acao_individual(
     else:
         raise ValueError(f"Tipo de fórmula não suportado: {formula_tipo}.")
 
-    percentual_contextual = sum(
-        modificadores_contextuais_acao.get(campo, 0)
-        for campo in atributos
-    )
     percentual_modificador = valor_modificador if eh_percentual else 0
     if variacao_dinamica is None:
         variacao_dinamica = random.randint(80, 120)
     if not 80 <= variacao_dinamica <= 120:
         raise ValueError("A variação dinâmica deve estar entre 80% e 120%.")
-    percentual_total = (
-        percentual_contextual
-        + percentual_modificador
-        + variacao_dinamica
-        - 100
-    )
+    percentual_total = percentual_modificador + variacao_dinamica - 100
     status_base_com_buffs = status_base * (1 + percentual_total / 100)
     bonus_fixo = sum(bonus_condicionais.values())
     if not eh_percentual:
@@ -2685,8 +2680,18 @@ async def roll(
         if multiplicador_total
         else 0.0
     )
+    status_base *= 1 + percentual_contextual / 100
     status_com_buffs = (
-        status_base * (1 + percentual_total / 100)
+        status_base
+        * (
+            1
+            + (
+                (valor_modificador if eh_percentual else 0)
+                + variacao_dinamica
+                - 100
+            )
+            / 100
+        )
         + valor_fixo
     )
     sufixo_modificador = "%" if eh_percentual else ""
