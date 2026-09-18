@@ -23,6 +23,7 @@ JOGADORES_FILE = BASE_DIR / "jogadores.json"
 TOKEN = "MTU0ODQxMTAwNjE0MzcwMTI0Mg.GS0Eny.iuehjk4VtkfwpoH3GzNzESuy8EpogU0-LkkSlA"
 # Informe abaixo o ID do servidor ou defina DISCORD_GUILD_ID no ambiente.
 GUILD_ID = "1548126299728650434"
+CARGO_USO_BOTS_ID = 1550366349585424495
 LIMITE_RANKING = 10
 VALOR_INICIAL_ATRIBUTO = 10
 VALOR_MAXIMO_ATRIBUTO = 100
@@ -70,6 +71,11 @@ MODIFICADORES_ALTURA = {
     "baixo": {"velocidade": 15, "fisico": -15},
     "medio": {},
     "alto": {"fisico": 15, "velocidade": -15},
+}
+MODIFICADORES_PE = {
+    "destro": {"passe": 5, "velocidade": 5},
+    "canhoto": {"chute": 7, "tecnica": 7},
+    "ambidestro": {"passe": 10, "chute": 10},
 }
 ROTULOS_PORTE = {
     "ectomorfo": "Ectomorfo Magro / Seco",
@@ -752,6 +758,17 @@ def normalizar_nome_busca(nome: str) -> str:
     )
 
 
+def pode_usar_bots(interaction: discord.Interaction) -> bool:
+    if not interaction.guild:
+        return False
+    if interaction.user.guild_permissions.administrator:
+        return True
+    return any(
+        cargo.id == CARGO_USO_BOTS_ID
+        for cargo in getattr(interaction.user, "roles", ())
+    )
+
+
 def localizar_jogador_por_nome(
     jogadores: dict[str, dict[str, Any]],
     nome: str,
@@ -1040,6 +1057,13 @@ def modificadores_contextuais(jogador: dict[str, Any]) -> tuple[dict[str, int], 
         bonus_dominancia_meia(jogador),
         MODIFICADORES_PORTE.get(str(jogador.get("peso")), {}),
         MODIFICADORES_ALTURA.get(str(jogador.get("altura")), {}),
+        MODIFICADORES_PE.get(
+            unicodedata.normalize("NFKD", str(jogador.get("pe")))
+            .encode("ascii", "ignore")
+            .decode()
+            .casefold(),
+            {},
+        ),
     ):
         for campo, percentual in grupo.items():
             modificadores[campo] = modificadores.get(campo, 0) + percentual
@@ -2064,9 +2088,9 @@ async def executar_acao_do_jogador(
     chave_jogador = str(interaction.user.id)
     nome_exibicao = interaction.user.display_name
     if bot_alvo:
-        if not interaction.guild or not interaction.user.guild_permissions.administrator:
+        if not pode_usar_bots(interaction):
             await interaction.response.send_message(
-                "Somente administradores podem usar bots nas ações.",
+                "Somente administradores ou membros com o cargo autorizado podem usar bots nas ações.",
                 ephemeral=True,
             )
             return
@@ -2120,7 +2144,7 @@ async def executar_acao_do_jogador(
     acao="Ação de drible, domínio ou recepção",
     modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
-    bot_alvo="Nome do bot criado; disponível somente para administradores",
+    bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_CONDUCAO))
 @app_commands.autocomplete(bot_alvo=autocompletar_bots)
@@ -2146,7 +2170,7 @@ async def conducao(
     acao="Tipo de finalização",
     modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
-    bot_alvo="Nome do bot criado; disponível somente para administradores",
+    bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_FINALIZACAO))
 @app_commands.autocomplete(bot_alvo=autocompletar_bots)
@@ -2172,7 +2196,7 @@ async def finalizacao(
     acao="Ação de passe, cruzamento ou lançamento",
     modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
-    bot_alvo="Nome do bot criado; disponível somente para administradores",
+    bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_PASSE))
 @app_commands.autocomplete(bot_alvo=autocompletar_bots)
@@ -2198,7 +2222,7 @@ async def passe(
     acao="Bote, carrinho, marcação ou interceptação",
     modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
-    bot_alvo="Nome do bot criado; disponível somente para administradores",
+    bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_DEFESA))
 @app_commands.autocomplete(bot_alvo=autocompletar_bots)
@@ -2381,6 +2405,7 @@ async def criar(
     imagem_arquivo="Novo arquivo da imagem do atleta",
     banner_arquivo="Novo arquivo do banner da ficha",
     imagem_atributos_arquivo="Novo arquivo da imagem dos atributos",
+    bot_alvo="Nome do bot criado; disponível somente para administradores",
 )
 @app_commands.choices(
     posicao=[
@@ -2414,6 +2439,7 @@ async def criar(
         app_commands.Choice(name="Tanque / Pesado", value="tanque"),
     ],
 )
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def editar(
     interaction: discord.Interaction,
     nome: str | None = None,
@@ -2430,10 +2456,28 @@ async def editar(
     imagem_arquivo: discord.Attachment | None = None,
     banner_arquivo: discord.Attachment | None = None,
     imagem_atributos_arquivo: discord.Attachment | None = None,
+    bot_alvo: str | None = None,
 ) -> None:
     await interaction.response.defer()
     jogadores = carregar_jogadores()
-    jogador = jogadores.get(str(interaction.user.id))
+    chave_jogador = str(interaction.user.id)
+    if bot_alvo is not None:
+        if not interaction.guild or not interaction.user.guild_permissions.administrator:
+            await interaction.followup.send(
+                "Somente administradores podem editar bots.",
+                ephemeral=True,
+            )
+            return
+        encontrado = localizar_jogador_por_nome(jogadores, bot_alvo)
+        if encontrado is None or not encontrado[0].startswith("bot:"):
+            await interaction.followup.send(
+                "Bot não encontrado. Selecione um bot criado na lista.",
+                ephemeral=True,
+            )
+            return
+        chave_jogador, jogador = encontrado
+    else:
+        jogador = jogadores.get(chave_jogador)
     if jogador is None:
         await interaction.followup.send(
             "Você ainda não possui uma ficha. Use `/criar`.",
@@ -2517,8 +2561,20 @@ async def editar(
         )
         return
 
+    nome_anterior = str(jogador["nome"])
     jogador.update(alteracoes)
     preparar_jogador(jogador, str(jogador["nome"]))
+    if chave_jogador.startswith("bot:") and nome != nome_anterior:
+        novo_nome = normalizar_nome_busca(str(jogador["nome"]))
+        nova_chave = f"bot:{re.sub(r'[^a-z0-9]+', '_', novo_nome).strip('_')}"
+        if nova_chave != chave_jogador and nova_chave in jogadores:
+            await interaction.followup.send(
+                "Já existe outro bot com esse nome.",
+                ephemeral=True,
+            )
+            return
+        jogadores.pop(chave_jogador)
+        jogadores[nova_chave] = jogador
     salvar_jogadores(jogadores)
     cor_banner = await obter_cor_embed(
         jogador,
@@ -2528,7 +2584,11 @@ async def editar(
     await interaction.followup.send(
         view=criar_layout_view(
             criar_personagem_embed(jogador, cor_banner),
-            content="Ficha atualizada com sucesso!",
+            content=(
+                "Bot atualizado com sucesso!"
+                if chave_jogador.startswith("bot:")
+                else "Ficha atualizada com sucesso!"
+            ),
         ),
     )
 
@@ -2618,7 +2678,7 @@ async def xp(interaction: discord.Interaction) -> None:
     equacao="Ex.: 1d20 + ((FIS - 10% + VEL) / 2)",
     modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
-    bot_alvo="Nome do bot criado; disponível somente para administradores",
+    bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def roll(
@@ -2632,9 +2692,9 @@ async def roll(
     chave_jogador = str(interaction.user.id)
     nome_exibicao = interaction.user.display_name
     if bot_alvo:
-        if not interaction.guild or not interaction.user.guild_permissions.administrator:
+        if not pode_usar_bots(interaction):
             await interaction.response.send_message(
-                "Somente administradores podem usar bots no `/roll`.",
+                "Somente administradores ou membros com o cargo autorizado podem usar bots no `/roll`.",
                 ephemeral=True,
             )
             return
@@ -2898,6 +2958,7 @@ async def distribuir_atributo(
 @app_commands.describe(
     nome="Nome único do bot",
     posicao="Posição obrigatória do bot",
+    pe="Pé dominante do bot",
     peso="Tipo físico obrigatório do bot",
     altura="Faixa de estatura do bot",
     nacionalidade="Nacionalidade do bot",
@@ -2923,6 +2984,11 @@ async def distribuir_atributo(
         app_commands.Choice(name="Atacante", value="Atacante"),
         app_commands.Choice(name="Segundo Atacante", value="Segundo Atacante"),
     ],
+    pe=[
+        app_commands.Choice(name="Destro", value="Destro"),
+        app_commands.Choice(name="Canhoto", value="Canhoto"),
+        app_commands.Choice(name="Ambidestro", value="Ambidestro"),
+    ],
     peso=[
         app_commands.Choice(name="Ectomorfo Magro / Seco", value="ectomorfo"),
         app_commands.Choice(name="Atlético Leve / Fibrado", value="atletico"),
@@ -2940,6 +3006,7 @@ async def criar_bot(
     interaction: discord.Interaction,
     nome: str,
     posicao: app_commands.Choice[str],
+    pe: app_commands.Choice[str],
     peso: app_commands.Choice[str],
     altura: app_commands.Choice[str],
     nacionalidade: str,
@@ -3007,10 +3074,10 @@ async def criar_bot(
         "tipo": "bot",
         "nome": nome_limpo,
         "posicao": posicao.value,
+        "pe": pe.value,
         "peso": peso.value,
         "altura": altura.value,
         "numero": 0,
-        "pe": "Não definido",
         "nacionalidade": nacionalidade.strip() or "Bot",
         "imagem": None,
         "banner": None,
