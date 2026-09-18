@@ -758,6 +758,10 @@ def normalizar_nome_busca(nome: str) -> str:
     )
 
 
+def normalizar_pe(valor: Any) -> str:
+    return normalizar_nome_busca(str(valor))
+
+
 def pode_usar_bots(interaction: discord.Interaction) -> bool:
     if not interaction.guild:
         return False
@@ -1057,13 +1061,7 @@ def modificadores_contextuais(jogador: dict[str, Any]) -> tuple[dict[str, int], 
         bonus_dominancia_meia(jogador),
         MODIFICADORES_PORTE.get(str(jogador.get("peso")), {}),
         MODIFICADORES_ALTURA.get(str(jogador.get("altura")), {}),
-        MODIFICADORES_PE.get(
-            unicodedata.normalize("NFKD", str(jogador.get("pe")))
-            .encode("ascii", "ignore")
-            .decode()
-            .casefold(),
-            {},
-        ),
+        MODIFICADORES_PE.get(normalizar_pe(jogador.get("pe")), {}),
     ):
         for campo, percentual in grupo.items():
             modificadores[campo] = modificadores.get(campo, 0) + percentual
@@ -1099,11 +1097,8 @@ def atributos_efetivos(jogador: dict[str, Any]) -> dict[str, float]:
 
 def bonus_dominancia_meia(jogador: dict[str, Any]) -> dict[str, int]:
     """Retorna o bônus de 10% em PAS das meias direita/esquerda."""
-    normalizar = lambda valor: unicodedata.normalize(
-        "NFKD", str(valor)
-    ).encode("ascii", "ignore").decode().casefold()
-    posicao = normalizar(jogador.get("posicao"))
-    pe = normalizar(jogador.get("pe"))
+    posicao = normalizar_nome_busca(str(jogador.get("posicao")))
+    pe = normalizar_pe(jogador.get("pe"))
     if posicao == "meia direita" and pe in {"destro", "ambidestro"}:
         return {"passe": 10}
     if posicao == "meia esquerda" and pe in {"canhoto", "ambidestro"}:
@@ -1425,6 +1420,11 @@ def preparar_jogador(jogador: dict[str, Any], nome: str) -> bool:
     jogador["posicao"] = str(jogador["posicao"])
     jogador["numero"] = max(0, int(jogador["numero"]))
     jogador["pe"] = str(jogador["pe"])
+    jogador["pe"] = {
+        "destro": "Destro",
+        "canhoto": "Canhoto",
+        "ambidestro": "Ambidestro",
+    }.get(normalizar_pe(jogador["pe"]), jogador["pe"])
     jogador["altura"] = str(jogador["altura"])
     jogador["peso"] = str(jogador["peso"])
     jogador["nacionalidade"] = str(jogador["nacionalidade"])
