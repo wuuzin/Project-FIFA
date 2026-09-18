@@ -506,17 +506,16 @@ ACOES_INDIVIDUAIS = {
         "nome": "Carrinho",
         "categoria": "Botes e Desarmes Diretos",
         "custo_est": 20,
-        "formula": "1d20 + ((DEF + 5 + VEL) / 2)",
+        "formula": "1d20 + ((DEF + VEL) / 2)",
         "atributos": ("defesa", "velocidade"),
-        "formula_tipo": "soma_constante_dividida",
-        "constante": 5,
+        "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"mesomorfo": {"defesa": 5}}},
+        "bonus_condicional": {"altura": {"alto": {"defesa": 5}}},
         "execucao": "Lança-se ao gramado para cortar a bola no limite.",
         "efeito": (
             "Garante o desarme ou trava o chute/passe. Se a margem de vitória "
             "for pelo menos o dobro, a defesa mantém a posse; caso contrário, "
-            "a bola sai pela lateral ou escanteio. Biotipo Mesomorfo recebe +5 em DEF."
+            "a bola sai pela lateral ou escanteio. Atletas altos recebem +5 em DEF."
         ),
         "falha": (
             "Total inferior a 10 resulta em falta; inferior a 5, cartão "
@@ -671,6 +670,9 @@ ACOES_INDIVIDUAIS = {
     },
 }
 
+for dados_acao in ACOES_INDIVIDUAIS.values():
+    dados_acao["custo_est"] = (int(dados_acao["custo_est"]) + 1) // 2
+
 ACOES_CONDUCAO = (
     "drible_de_corpo",
     "caneta_janela",
@@ -765,6 +767,23 @@ def localizar_jogador_por_nome(
     if len(encontrados) > 1:
         raise ValueError("Há mais de um personagem com esse nome.")
     return None
+
+
+async def autocompletar_bots(
+    _interaction: discord.Interaction,
+    valor: str,
+) -> list[app_commands.Choice[str]]:
+    procurado = normalizar_nome_busca(valor)
+    bots = []
+    for chave, jogador in carregar_jogadores().items():
+        if not chave.startswith("bot:"):
+            continue
+        nome = str(jogador.get("nome", chave[4:]))
+        if procurado in normalizar_nome_busca(nome):
+            bots.append(
+                app_commands.Choice(name=nome[:100], value=nome[:100])
+            )
+    return bots[:25]
 
 
 def interpretar_atributos_bot(valor: str) -> dict[str, int]:
@@ -1922,24 +1941,27 @@ class FuteBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         guild_id = GUILD_ID or os.getenv("DISCORD_GUILD_ID")
-        if guild_id and guild_id.isdigit():
-            guild = discord.Object(id=int(guild_id))
-            self.tree.copy_global_to(guild=guild)
-            try:
-                await self.tree.sync(guild=guild)
-            except discord.Forbidden as erro:
-                print(
-                    "Não foi possível sincronizar os comandos no servidor "
-                    f"{guild_id}: o bot não tem acesso a esse servidor. "
-                    "Confira o ID e se o bot foi convidado com os escopos "
-                    "bot e applications.commands."
-                )
-                self.tree.clear_commands(guild=guild)
-                raise RuntimeError(
-                    "DISCORD_GUILD_ID aponta para um servidor sem acesso para este bot."
-                ) from erro
-        else:
-            await self.tree.sync()
+        if not guild_id or not guild_id.isdigit():
+            raise RuntimeError(
+                "GUILD_ID ou DISCORD_GUILD_ID deve conter o ID numérico do servidor."
+            )
+
+        guild = discord.Object(id=int(guild_id))
+        self.tree.clear_commands(guild=guild)
+        self.tree.copy_global_to(guild=guild)
+        try:
+            await self.tree.sync(guild=guild)
+        except discord.Forbidden as erro:
+            print(
+                "Não foi possível sincronizar os comandos no servidor "
+                f"{guild_id}: o bot não tem acesso a esse servidor. "
+                "Confira o ID e se o bot foi convidado com os escopos "
+                "bot e applications.commands."
+            )
+            self.tree.clear_commands(guild=guild)
+            raise RuntimeError(
+                "GUILD_ID aponta para um servidor sem acesso para este bot."
+            ) from erro
 
 
 bot = FuteBot()
@@ -2101,6 +2123,7 @@ async def executar_acao_do_jogador(
     bot_alvo="Nome do bot criado; disponível somente para administradores",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_CONDUCAO))
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def conducao(
     interaction: discord.Interaction,
     acao: app_commands.Choice[str],
@@ -2126,6 +2149,7 @@ async def conducao(
     bot_alvo="Nome do bot criado; disponível somente para administradores",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_FINALIZACAO))
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def finalizacao(
     interaction: discord.Interaction,
     acao: app_commands.Choice[str],
@@ -2151,6 +2175,7 @@ async def finalizacao(
     bot_alvo="Nome do bot criado; disponível somente para administradores",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_PASSE))
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def passe(
     interaction: discord.Interaction,
     acao: app_commands.Choice[str],
@@ -2176,6 +2201,7 @@ async def passe(
     bot_alvo="Nome do bot criado; disponível somente para administradores",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_DEFESA))
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def defesa(
     interaction: discord.Interaction,
     acao: app_commands.Choice[str],
@@ -2594,6 +2620,7 @@ async def xp(interaction: discord.Interaction) -> None:
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível somente para administradores",
 )
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def roll(
     interaction: discord.Interaction,
     equacao: str,
@@ -2872,6 +2899,8 @@ async def distribuir_atributo(
     nome="Nome único do bot",
     posicao="Posição obrigatória do bot",
     peso="Tipo físico obrigatório do bot",
+    altura="Faixa de estatura do bot",
+    nacionalidade="Nacionalidade do bot",
     fis="Valor de FIS entre 0 e 100",
     vel="Valor de VEL entre 0 e 100",
     tec="Valor de TEC entre 0 e 100",
@@ -2901,12 +2930,19 @@ async def distribuir_atributo(
         app_commands.Choice(name="Mesomorfo Forte / Denso", value="mesomorfo"),
         app_commands.Choice(name="Tanque / Pesado", value="tanque"),
     ],
+    altura=[
+        app_commands.Choice(name="Baixo (1,65 m a 1,73 m)", value="baixo"),
+        app_commands.Choice(name="Estatura Média (1,74 m a 1,85 m)", value="medio"),
+        app_commands.Choice(name="Alto (1,86 m a 2,00 m)", value="alto"),
+    ],
 )
 async def criar_bot(
     interaction: discord.Interaction,
     nome: str,
     posicao: app_commands.Choice[str],
     peso: app_commands.Choice[str],
+    altura: app_commands.Choice[str],
+    nacionalidade: str,
     fis: int,
     vel: int,
     tec: int,
@@ -2972,11 +3008,10 @@ async def criar_bot(
         "nome": nome_limpo,
         "posicao": posicao.value,
         "peso": peso.value,
+        "altura": altura.value,
         "numero": 0,
         "pe": "Não definido",
-        "altura": "Não definida",
-        "peso": "Não definido",
-        "nacionalidade": "Bot",
+        "nacionalidade": nacionalidade.strip() or "Bot",
         "imagem": None,
         "banner": None,
     }
@@ -3003,6 +3038,7 @@ async def criar_bot(
     jogador="Jogador que terá o atributo alterado",
     atributo="Atributo que será alterado",
     valor="Novo valor entre 0 e 100",
+    bot_alvo="Nome do bot criado",
 )
 @app_commands.choices(
     atributo=[
@@ -3010,11 +3046,13 @@ async def criar_bot(
         for _, nome, campo, _ in ATRIBUTOS
     ]
 )
+@app_commands.autocomplete(bot_alvo=autocompletar_bots)
 async def alterar_atributo(
     interaction: discord.Interaction,
-    jogador: discord.User,
     atributo: app_commands.Choice[str],
     valor: int,
+    jogador: discord.User | None = None,
+    bot_alvo: str | None = None,
 ) -> None:
     if not 0 <= valor <= VALOR_MAXIMO_ATRIBUTO:
         await interaction.response.send_message(
@@ -3023,13 +3061,45 @@ async def alterar_atributo(
         )
         return
 
+    if jogador is not None and bot_alvo is not None:
+        await interaction.response.send_message(
+            "Informe um jogador ou um bot, não os dois.",
+            ephemeral=True,
+        )
+        return
+    if jogador is None and bot_alvo is None:
+        await interaction.response.send_message(
+            "Informe o jogador ou o nome do bot.",
+            ephemeral=True,
+        )
+        return
+
     jogadores = carregar_jogadores()
-    dados = jogadores.setdefault(str(jogador.id), {"nome": jogador.display_name})
-    preparar_jogador(dados, jogador.display_name)
+    if bot_alvo is not None:
+        encontrado = localizar_jogador_por_nome(jogadores, bot_alvo)
+        if encontrado is None or not encontrado[0].startswith("bot:"):
+            await interaction.response.send_message(
+                "Bot não encontrado. Selecione um bot criado na lista.",
+                ephemeral=True,
+            )
+            return
+        chave, dados = encontrado
+        nome_alvo = str(dados.get("nome", bot_alvo))
+    else:
+        assert jogador is not None
+        chave = str(jogador.id)
+        dados = jogadores.setdefault(chave, {"nome": jogador.display_name})
+        nome_alvo = jogador.display_name
+    preparar_jogador(dados, nome_alvo)
     dados[atributo.value] = valor
     salvar_jogadores(jogadores)
+    alvo = (
+        f"o bot **{nome_alvo}**"
+        if bot_alvo is not None
+        else f"{jogador.mention if jogador is not None else nome_alvo}"
+    )
     await interaction.response.send_message(
-        f"O atributo **{atributo.name}** de {jogador.mention} "
+        f"O atributo **{atributo.name}** de {alvo} "
         f"foi alterado para **{valor}**.",
         ephemeral=True,
     )
