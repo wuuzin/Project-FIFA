@@ -72,7 +72,7 @@ MODIFICADORES_ALTURA = {
     "medio": {},
     "alto": {"fisico": 15, "velocidade": -15},
 }
-MODIFICADORES_PE = {
+MODIFICADORES_PEJOGADOR = {
     "destro": {"passe": 5, "velocidade": 5},
     "canhoto": {"chute": 7, "tecnica": 7},
     "ambidestro": {"passe": 10, "chute": 10},
@@ -1061,7 +1061,7 @@ def modificadores_contextuais(jogador: dict[str, Any]) -> tuple[dict[str, int], 
         bonus_dominancia_meia(jogador),
         MODIFICADORES_PORTE.get(str(jogador.get("peso")), {}),
         MODIFICADORES_ALTURA.get(str(jogador.get("altura")), {}),
-        MODIFICADORES_PE.get(normalizar_pe(jogador.get("pe")), {}),
+        MODIFICADORES_PEJOGADOR.get(normalizar_pe(jogador.get("pe")), {}),
     ):
         for campo, percentual in grupo.items():
             modificadores[campo] = modificadores.get(campo, 0) + percentual
