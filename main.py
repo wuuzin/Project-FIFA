@@ -807,6 +807,30 @@ async def autocompletar_bots(
     return bots[:25]
 
 
+async def autocompletar_personagens(
+    _interaction: discord.Interaction,
+    valor: str,
+) -> list[app_commands.Choice[str]]:
+    procurado = normalizar_nome_busca(valor)
+    personagens: list[app_commands.Choice[str]] = []
+    nomes_vistos: set[str] = set()
+    for jogador in carregar_jogadores().values():
+        nome = str(jogador.get("nome", "")).strip()
+        if not nome:
+            continue
+        chave_nome = normalizar_nome_busca(nome)
+        if chave_nome in nomes_vistos:
+            continue
+        if procurado and procurado not in chave_nome:
+            continue
+        nomes_vistos.add(chave_nome)
+        personagens.append(
+            app_commands.Choice(name=nome[:100], value=nome[:100])
+        )
+    personagens.sort(key=lambda escolha: escolha.name.casefold())
+    return personagens[:25]
+
+
 def interpretar_atributos_bot(valor: str) -> dict[str, int]:
     """Lê atributos no formato ``FIS=80 TEC=70 VIS=65``."""
     atributos = {
@@ -2596,8 +2620,9 @@ async def editar(
 @bot.tree.command(name="personagem", description="Mostra a ficha de um atleta.")
 @app_commands.describe(
     usuario="Usuário cuja ficha será exibida",
-    personagem_nome="Nome exato do personagem cuja ficha será exibida",
+    personagem_nome="Nome do personagem cuja ficha será exibida",
 )
+@app_commands.autocomplete(personagem_nome=autocompletar_personagens)
 async def personagem(
     interaction: discord.Interaction,
     usuario: discord.User | None = None,
@@ -2825,8 +2850,9 @@ async def roll(
 @bot.tree.command(name="atributos", description="Mostra a tabela de atributos de um atleta.")
 @app_commands.describe(
     usuario="Usuário cujos atributos serão exibidos",
-    personagem_nome="Nome exato do personagem cujos atributos serão exibidos",
+    personagem_nome="Nome do personagem cujos atributos serão exibidos",
 )
+@app_commands.autocomplete(personagem_nome=autocompletar_personagens)
 async def atributos(
     interaction: discord.Interaction,
     usuario: discord.User | None = None,
