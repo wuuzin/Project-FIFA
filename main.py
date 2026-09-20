@@ -2062,9 +2062,18 @@ def opcoes_de_acoes(
     chaves: tuple[str, ...],
 ) -> list[app_commands.Choice[str]]:
     return [
-        app_commands.Choice(name=ACOES_INDIVIDUAIS[chave]["nome"], value=chave)
+        app_commands.Choice(
+            name=f"{ACOES_INDIVIDUAIS[chave]['nome']} ({formatar_atributos_acao(ACOES_INDIVIDUAIS[chave]['atributos'])})",
+            value=chave,
+        )
         for chave in chaves
     ]
+
+
+def formatar_atributos_acao(campos: tuple[str, ...] | list[str]) -> str:
+    """Retorna abreviações dos status usados, ex.: ``TEC + VIS``."""
+    mapa = {campo: abreviacao for _, _, campo, abreviacao in ATRIBUTOS}
+    return " + ".join(mapa[campo] for campo in campos if campo in mapa)
 
 
 def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
@@ -2093,9 +2102,12 @@ def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
         )
         linhas_buffs.append(f"`{abreviacao}` {bonus:+g} (bônus da tática)")
     texto_buffs = ", ".join(linhas_buffs) if linhas_buffs else "Nenhum"
+    atributos_usados = formatar_atributos_acao(resultado.get("atributos", []))
+    texto_atributos = atributos_usados or "Nenhum"
     descricao = (
         f"## ﹙⚽﹚ {resultado['categoria']}\n"
         f"# {resultado['nome_acao']}\n\n"
+        f"**Atributos usados:** `{texto_atributos}`\n"
         f"**Fórmula:** `{resultado['formula']}`\n"
         f"**Custo de EST:** `{resultado['custo_est']}`\n"
         f"\n"
