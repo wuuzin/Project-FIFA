@@ -1013,6 +1013,7 @@ def calcular_roll_personagem(
     list[tuple[float, bool, str | None]],
     float,
     float,
+    dict[str, int],
 ]:
     """Avalia uma equação e aplica os multiplicadores ao resultado dos status."""
     if not equacao.strip() or len(equacao) > 200:
@@ -1022,6 +1023,12 @@ def calcular_roll_personagem(
         abreviacao: float(jogador[campo])
         for _, _, campo, abreviacao in ATRIBUTOS
     }
+    modificadores_ctx, _ = modificadores_contextuais(jogador)
+    for _, _, campo, abreviacao in ATRIBUTOS:
+        percentual = modificadores_ctx.get(campo, 0)
+        if percentual:
+            atributos[abreviacao] *= 1 + percentual / 100
+
     modificadores_manuais = interpretar_modificadores(modificador)
     for valor_mod, eh_percentual, atributo in modificadores_manuais:
         if atributo is None:
@@ -1121,10 +1128,8 @@ def calcular_roll_personagem(
         for _, _, campo, abreviacao in ATRIBUTOS
         if abreviacao in metricas_usadas
     }
-    modificadores, _ = modificadores_contextuais(jogador)
-    percentual_contextual = sum(
-        modificadores.get(campo, 0) for campo in campos_usados
-    )
+    # Buffs de ficha já entraram atributo a atributo acima.
+    # Aqui só entram modificador global (%) e variação dinâmica.
     percentual_manual = sum(
         valor_mod
         for valor_mod, eh_percentual, atributo in modificadores_manuais
@@ -1135,9 +1140,7 @@ def calcular_roll_personagem(
         for valor_mod, eh_percentual, atributo in modificadores_manuais
         if atributo is None and not eh_percentual
     )
-    percentual_total = (
-        percentual_contextual + percentual_manual + variacao_dinamica - 100
-    )
+    percentual_total = percentual_manual + variacao_dinamica - 100
     status_com_variacao = (
         status_base * (1 + percentual_total / 100)
         + valor_fixo
@@ -1150,6 +1153,11 @@ def calcular_roll_personagem(
         modificadores_manuais,
         status_base,
         status_com_variacao,
+        {
+            campo: percentual
+            for campo, percentual in modificadores_ctx.items()
+            if campo in campos_usados and percentual
+        },
     )
 
 
@@ -2186,8 +2194,8 @@ def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
         f"**Custo de EST:** `{resultado['custo_est']}`\n"
         f"\n"
         f"**D20:** `{resultado['d20']}`\n"
-        f"**Status base:** `{resultado['status_base']:.2f}`\n"
-        f"**Status com buffs:** `{resultado['status_base_com_buffs']:.2f}` "
+        f"**Status (com buffs de ficha):** `{resultado['status_base']:.2f}`\n"
+        f"**Status com variação:** `{resultado['status_base_com_buffs']:.2f}` "
         f"({resultado['percentual_contextual']:+g}%)\n"
         f"**Valores fixos:** `{resultado.get('bonus_fixo', 0):+g}`\n"
         f"**Variação dinâmica:** `{fator}`\n"
@@ -2879,6 +2887,7 @@ async def roll(
             modificadores_manuais,
             status_base,
             status_com_buffs,
+            buffs_contextuais,
         ) = calcular_roll_personagem(
             jogador,
             equacao,
@@ -2889,37 +2898,15 @@ async def roll(
         await interaction.response.send_message(str(erro), ephemeral=True)
         return
 
-    expressao_roll = equacao.upper()
-    metricas_usadas = {
-        nome
-        for nome in re.findall(r"\b[A-Z][A-Z0-9_]*\b", expressao_roll)
-        if nome in {abreviacao for _, _, _, abreviacao in ATRIBUTOS}
-    }
-    modificadores, _ = modificadores_contextuais(jogador)
-    campos_usados = {
-        campo
-        for _, _, campo, abreviacao in ATRIBUTOS
-        if abreviacao in metricas_usadas
-    }
-    percentual_contextual = sum(
-        modificadores.get(campo, 0) for campo in campos_usados
-    )
     percentual_manual = sum(
         valor_mod
         for valor_mod, eh_percentual, atributo in modificadores_manuais
         if atributo is None and eh_percentual
     )
-    percentual_total = (
-        percentual_contextual
-        + percentual_manual
-        + variacao_dinamica
-        - 100
-    )
+    percentual_total = percentual_manual + variacao_dinamica - 100
     texto_modificador = formatar_modificadores(modificadores_manuais)
     linhas_buffs = []
-    for campo, percentual in modificadores.items():
-        if campo not in campos_usados or not percentual:
-            continue
+    for campo, percentual in buffs_contextuais.items():
         abreviacao = next(
             abreviacao
             for _, _, nome_campo, abreviacao in ATRIBUTOS
@@ -2938,8 +2925,8 @@ async def roll(
             f"**Fórmula:** `{equacao}`\n"
             f"\n"
             f"**D20:** {texto_d20}\n"
-            f"**Status base:** `{status_base:.2f}`\n"
-            f"**Status com buffs:** `{status_com_buffs:.2f}` "
+            f"**Status (com buffs de ficha):** `{status_base:.2f}`\n"
+            f"**Status com variação:** `{status_com_buffs:.2f}` "
             f"({percentual_total:+g}%)\n"
             f"**Variação dinâmica:** `{variacao_dinamica}%`\n"
             f"**Modificador:** `{texto_modificador}`\n"
