@@ -44,9 +44,9 @@ MODIFICADOR_STATUS_RE = re.compile(
     r"^\s*([+-]?)\s*(\d+(?:[.,]\d+)?)\s*(%)?"
     r"(?:\s+([A-Za-zÀ-ÿ]+))?\s*$"
 )
-# Detecta tokens como "+5", "-10%", "+25% CHU" para barrar listas.
+# Detecta tokens como "+5", "-10%", "+25% CHU", "+10 PAS".
 TOKEN_MODIFICADOR_RE = re.compile(
-    r"[+-]?\s*\d+(?:[.,]\d+)?\s*%?(?:\s+[A-Za-zÀ-ÿ]+)?"
+    r"([+-]?)\s*(\d+(?:[.,]\d+)?)(?:\s*(%))?(?:\s+([A-Za-zÀ-ÿ]+))?"
 )
 ABREVIACAO_PARA_ATRIBUTO = {
     abreviacao: campo for _, _, campo, abreviacao in ATRIBUTOS
@@ -884,71 +884,120 @@ def interpretar_atributos_bot(valor: str) -> dict[str, int]:
     return atributos
 
 
-def _garantir_modificador_unico(valor: str) -> None:
-    """Impede listas como '+25% CHU, +25% PAS' ou '+10 +5% DEF'."""
+def formatar_modificadores(
+    modificadores: list[tuple[float, bool, str | None]],
+) -> str:
+    """Formata modificadores para exibição, ex.: ``+25% CHU, +25% PAS``."""
+    if not modificadores:
+        return "0"
+    mapa = {campo: abreviacao for _, _, campo, abreviacao in ATRIBUTOS}
+    partes: list[str] = []
+    for valor, eh_percentual, atributo in modificadores:
+        texto = f"{valor:+g}"
+        if eh_percentual:
+            texto += "%"
+        if atributo is not None:
+            texto += f" {mapa.get(atributo, atributo).upper()}"
+        partes.append(texto)
+    return ", ".join(partes)
+
+
+def interpretar_modificadores(
+    valor: str | int | float | None,
+) -> list[tuple[float, bool, str | None]]:
+    """Lê um ou mais modificadores, ex.: ``+25% CHU, +25% PAS``."""
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return []
+    if isinstance(valor, (int, float)):
+        return [(float(valor), False, None)]
+
     texto = valor.strip().strip("()[]")
-    partes = [parte.strip() for parte in re.split(r"[,;]+", texto) if parte.strip()]
-    if len(partes) > 1:
+    ocorrencias = list(TOKEN_MODIFICADOR_RE.finditer(texto))
+    if not ocorrencias:
         raise ValueError(
-            "Só é permitido **um** modificador por vez. "
-            "Ex.: `+25% CHU` — não use `+25% CHU, +25% PAS`."
+            "O modificador deve estar no formato +5, -5, +20%, -10%, "
+            "-5% DEF, +10% CHU ou +25% CHU, +25% PAS."
         )
 
-    tokens = TOKEN_MODIFICADOR_RE.findall(texto)
-    if len(tokens) > 1:
+    sobra = TOKEN_MODIFICADOR_RE.sub(" ", texto)
+    sobra = re.sub(r"[,;\s]+", "", sobra)
+    if sobra:
         raise ValueError(
-            "Só é permitido **um** modificador por vez. "
-            "Ex.: `+25% CHU` — não use `+25% CHU +25% PAS`."
+            "O modificador deve estar no formato +5, -5, +20%, -10%, "
+            "-5% DEF, +10% CHU ou +25% CHU, +25% PAS."
         )
+
+    modificadores: list[tuple[float, bool, str | None]] = []
+    for ocorrencia in ocorrencias:
+        sinal, numero, percentual, abreviacao = ocorrencia.groups()
+        valor_numerico = float(numero.replace(",", "."))
+        if sinal == "-":
+            valor_numerico *= -1
+        atributo: str | None = None
+        if abreviacao is not None:
+            atributo = ABREVIACAO_PARA_ATRIBUTO.get(abreviacao.upper())
+            if atributo is None:
+                abreviacoes = ", ".join(ABREVIACAO_PARA_ATRIBUTO)
+                raise ValueError(
+                    f"Status inválido ({abreviacao}). Use: {abreviacoes}."
+                )
+        modificadores.append((valor_numerico, percentual == "%", atributo))
+    return modificadores
 
 
 def interpretar_modificador(valor: str | int | float | None) -> tuple[float, bool]:
-    """Converte um modificador como '+5', '-10' ou '+20%' em valor e tipo."""
-    if valor is None or (isinstance(valor, str) and not valor.strip()):
+    """Converte um modificador global como '+5', '-10' ou '+20%'."""
+    modificadores = interpretar_modificadores(valor)
+    if not modificadores:
         return 0.0, False
-    if isinstance(valor, (int, float)):
-        return float(valor), False
-    _garantir_modificador_unico(valor)
-    correspondencia = MODIFICADOR_RE.fullmatch(valor.strip().strip("()[]"))
-    if correspondencia is None:
+    if len(modificadores) != 1 or modificadores[0][2] is not None:
         raise ValueError("O modificador deve estar no formato +5, -5, +20% ou -10%.")
-
-    sinal, numero, percentual = correspondencia.groups()
-    valor_numerico = float(numero.replace(",", "."))
-    if sinal == "-":
-        valor_numerico *= -1
-    return valor_numerico, percentual == "%"
+    valor_numerico, eh_percentual, _ = modificadores[0]
+    return valor_numerico, eh_percentual
 
 
 def interpretar_modificador_status(
     valor: str | int | float | None,
 ) -> tuple[float, bool, str | None]:
-    """Converte um modificador e, opcionalmente, o status que ele altera."""
-    if valor is None or (isinstance(valor, str) and not valor.strip()):
+    """Compatibilidade: devolve o primeiro modificador interpretado."""
+    modificadores = interpretar_modificadores(valor)
+    if not modificadores:
         return 0.0, False, None
-    if isinstance(valor, (int, float)):
-        return float(valor), False, None
+    return modificadores[0]
 
-    _garantir_modificador_unico(valor)
-    correspondencia = MODIFICADOR_STATUS_RE.fullmatch(valor.strip().strip("()[]"))
-    if correspondencia is None:
-        raise ValueError(
-            "O modificador deve estar no formato +5, -5, +20%, -10%, "
-            "-5% DEF ou +10% CHU. Apenas um modificador por vez."
-        )
 
-    sinal, numero, percentual, abreviacao = correspondencia.groups()
-    valor_numerico = float(numero.replace(",", "."))
-    if sinal == "-":
-        valor_numerico *= -1
-    if abreviacao is None:
-        return valor_numerico, percentual == "%", None
-
-    atributo = ABREVIACAO_PARA_ATRIBUTO.get(abreviacao.upper())
-    if atributo is None:
-        abreviacoes = ", ".join(ABREVIACAO_PARA_ATRIBUTO)
-        raise ValueError(f"Status inválido. Use uma destas abreviações: {abreviacoes}.")
-    return valor_numerico, percentual == "%", atributo
+def aplicar_modificadores_em_valores(
+    valores: list[float],
+    campos: tuple[str, ...] | list[str],
+    modificadores: list[tuple[float, bool, str | None]],
+    *,
+    exigir_na_acao: bool = False,
+) -> tuple[float, float]:
+    """Aplica mods por atributo em ``valores`` e devolve (percentual global, fixo global)."""
+    indices = {campo: indice for indice, campo in enumerate(campos)}
+    percentual_global = 0.0
+    fixo_global = 0.0
+    for valor_mod, eh_percentual, atributo in modificadores:
+        if atributo is None:
+            if eh_percentual:
+                percentual_global += valor_mod
+            else:
+                fixo_global += valor_mod
+            continue
+        if atributo not in indices:
+            mapa = {campo: abr for _, _, campo, abr in ATRIBUTOS}
+            rotulo = mapa.get(atributo, atributo).upper()
+            if exigir_na_acao:
+                raise ValueError(
+                    f"O status {rotulo} não participa desta ação."
+                )
+            raise ValueError(f"O status {rotulo} não existe na ficha.")
+        indice = indices[atributo]
+        if eh_percentual:
+            valores[indice] *= 1 + valor_mod / 100
+        else:
+            valores[indice] += valor_mod
+    return percentual_global, fixo_global
 
 
 def calcular_roll_personagem(
@@ -956,7 +1005,15 @@ def calcular_roll_personagem(
     equacao: str,
     modificador: str | int | float | None = None,
     variacao_dinamica: int | None = None,
-) -> tuple[float, dict[str, float], list[tuple[str, int]], int, float, bool, str | None]:
+) -> tuple[
+    float,
+    dict[str, float],
+    list[tuple[str, int]],
+    int,
+    list[tuple[float, bool, str | None]],
+    float,
+    float,
+]:
     """Avalia uma equação e aplica os multiplicadores ao resultado dos status."""
     if not equacao.strip() or len(equacao) > 200:
         raise ValueError("A equação deve ter entre 1 e 200 caracteres.")
@@ -965,16 +1022,23 @@ def calcular_roll_personagem(
         abreviacao: float(jogador[campo])
         for _, _, campo, abreviacao in ATRIBUTOS
     }
-    valor_modificador, eh_percentual, atributo_modificado = (
-        interpretar_modificador_status(modificador)
-    )
-    if atributo_modificado is not None:
-        if atributo_modificado not in {
-            campo for _, _, campo, _ in ATRIBUTOS
-        }:
+    modificadores_manuais = interpretar_modificadores(modificador)
+    for valor_mod, eh_percentual, atributo in modificadores_manuais:
+        if atributo is None:
+            continue
+        if atributo not in {campo for _, _, campo, _ in ATRIBUTOS}:
+            mapa = {campo: abr for _, _, campo, abr in ATRIBUTOS}
             raise ValueError(
-                f"O status {atributo_modificado.upper()} não existe na ficha."
+                f"O status {mapa.get(atributo, atributo).upper()} não existe na ficha."
             )
+        abreviacao = next(
+            abr for _, _, campo, abr in ATRIBUTOS if campo == atributo
+        )
+        if eh_percentual:
+            atributos[abreviacao] *= 1 + valor_mod / 100
+        else:
+            atributos[abreviacao] += valor_mod
+
     nomes = sorted(atributos, key=len, reverse=True)
     expressao = equacao.upper()
     metricas_usadas = {
@@ -1061,11 +1125,19 @@ def calcular_roll_personagem(
     percentual_contextual = sum(
         modificadores.get(campo, 0) for campo in campos_usados
     )
-    percentual_manual = valor_modificador if eh_percentual else 0
+    percentual_manual = sum(
+        valor_mod
+        for valor_mod, eh_percentual, atributo in modificadores_manuais
+        if atributo is None and eh_percentual
+    )
+    valor_fixo = sum(
+        valor_mod
+        for valor_mod, eh_percentual, atributo in modificadores_manuais
+        if atributo is None and not eh_percentual
+    )
     percentual_total = (
         percentual_contextual + percentual_manual + variacao_dinamica - 100
     )
-    valor_fixo = valor_modificador if not eh_percentual else 0
     status_com_variacao = (
         status_base * (1 + percentual_total / 100)
         + valor_fixo
@@ -1075,9 +1147,9 @@ def calcular_roll_personagem(
         atributos,
         dados,
         variacao_dinamica,
-        valor_modificador,
-        eh_percentual,
-        atributo_modificado,
+        modificadores_manuais,
+        status_base,
+        status_com_variacao,
     )
 
 
@@ -1291,14 +1363,13 @@ def calcular_acao_individual(
         * (1 + modificadores_contextuais_acao.get(campo, 0) / 100)
         for campo in atributos
     ]
-    valor_modificador, eh_percentual, atributo_modificado = (
-        interpretar_modificador_status(modificador)
+    modificadores_manuais = interpretar_modificadores(modificador)
+    percentual_modificador, fixo_modificador = aplicar_modificadores_em_valores(
+        valores_status,
+        atributos,
+        modificadores_manuais,
+        exigir_na_acao=True,
     )
-    if atributo_modificado is not None:
-        if atributo_modificado not in atributos:
-            raise ValueError(
-                f"O status {atributo_modificado.upper()} não participa desta ação."
-            )
     penalidade_campo = dados_acao.get("penalidade_atributo")
     penalidade = float(dados_acao.get("penalidade_valor", 0))
 
@@ -1335,16 +1406,13 @@ def calcular_acao_individual(
     else:
         raise ValueError(f"Tipo de fórmula não suportado: {formula_tipo}.")
 
-    percentual_modificador = valor_modificador if eh_percentual else 0
     if variacao_dinamica is None:
         variacao_dinamica = random.randint(80, 120)
     if not 80 <= variacao_dinamica <= 120:
         raise ValueError("A variação dinâmica deve estar entre 80% e 120%.")
     percentual_total = percentual_modificador + variacao_dinamica - 100
     status_base_com_buffs = status_base * (1 + percentual_total / 100)
-    bonus_fixo = sum(bonus_condicionais.values())
-    if not eh_percentual:
-        bonus_fixo += valor_modificador
+    bonus_fixo = sum(bonus_condicionais.values()) + fixo_modificador
     if penalidade_campo in atributos:
         bonus_fixo += penalidade
     resultado = calcular_teste_acao(
@@ -1371,7 +1439,11 @@ def calcular_acao_individual(
             "falha_critica": dados_acao.get("falha_critica"),
             "bonus_resultado": dados_acao.get("bonus_resultado", 0),
             "status_base": status_base,
-            "modificador_status": atributo_modificado,
+            "modificadores_manuais": modificadores_manuais,
+            "modificador_texto": formatar_modificadores(modificadores_manuais),
+            "modificador_status": (
+                modificadores_manuais[0][2] if len(modificadores_manuais) == 1 else None
+            ),
             "modificadores_contextuais": {
                 campo: percentual
                 for campo, percentual in modificadores_contextuais_acao.items()
@@ -1382,15 +1454,15 @@ def calcular_acao_individual(
             "percentual_contextual": percentual_total,
             "status_base_com_buffs": status_base_com_buffs,
             "bonus_fixo": bonus_fixo,
-            "modificador": valor_modificador,
-            "modificador_percentual": eh_percentual,
+            "modificador": (
+                modificadores_manuais[0][0] if len(modificadores_manuais) == 1 else 0.0
+            ),
+            "modificador_percentual": (
+                modificadores_manuais[0][1] if len(modificadores_manuais) == 1 else False
+            ),
             "variacao_dinamica": variacao_dinamica,
         }
     )
-    if atributo_modificado is not None:
-        resultado["modificador"] = valor_modificador
-        resultado["modificador_percentual"] = eh_percentual
-        resultado["modificador_status"] = atributo_modificado
     resultado["total"] = round(resultado["total"] + resultado["bonus_resultado"])
     _, fator_estamina = modificadores_contextuais(jogador)
     resultado["estamina_maxima"] = round(
@@ -2078,12 +2150,14 @@ def formatar_atributos_acao(campos: tuple[str, ...] | list[str]) -> str:
 
 def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
     fator = f"{resultado['variacao_dinamica']}%"
-    modificador = resultado["modificador"]
-    sufixo_modificador = "%" if resultado["modificador_percentual"] else ""
-    status_modificador = resultado.get("modificador_status")
-    texto_modificador = f"{modificador:g}{sufixo_modificador}"
-    if status_modificador:
-        texto_modificador += f" {status_modificador.upper()}"
+    texto_modificador = resultado.get("modificador_texto")
+    if not texto_modificador:
+        modificador = resultado["modificador"]
+        sufixo_modificador = "%" if resultado["modificador_percentual"] else ""
+        status_modificador = resultado.get("modificador_status")
+        texto_modificador = f"{modificador:g}{sufixo_modificador}"
+        if status_modificador:
+            texto_modificador += f" {status_modificador.upper()}"
     modificadores = resultado.get("modificadores_contextuais", {})
     bonus_condicionais = resultado.get("bonus_condicionais", {})
     linhas_buffs = []
@@ -2216,7 +2290,7 @@ async def executar_acao_do_jogador(
 @bot.tree.command(name="conducao", description="Executa uma ação de condução.")
 @app_commands.describe(
     acao="Ação de drible, domínio ou recepção",
-    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2242,7 +2316,7 @@ async def conducao(
 @bot.tree.command(name="finalizacao", description="Executa uma finalização.")
 @app_commands.describe(
     acao="Tipo de finalização",
-    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2268,7 +2342,7 @@ async def finalizacao(
 @bot.tree.command(name="passe", description="Executa uma ação de passe.")
 @app_commands.describe(
     acao="Ação de passe, cruzamento ou lançamento",
-    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2294,7 +2368,7 @@ async def passe(
 @bot.tree.command(name="defesa", description="Executa uma ação defensiva.")
 @app_commands.describe(
     acao="Bote, carrinho, marcação ou interceptação",
-    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2751,7 +2825,7 @@ async def xp(interaction: discord.Interaction) -> None:
 )
 @app_commands.describe(
     equacao="Ex.: 1d20 + ((FIS - 10% + VEL) / 2)",
-    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2802,9 +2876,9 @@ async def roll(
             _,
             dados,
             variacao_dinamica,
-            valor_modificador,
-            eh_percentual,
-            atributo_modificado,
+            modificadores_manuais,
+            status_base,
+            status_com_buffs,
         ) = calcular_roll_personagem(
             jogador,
             equacao,
@@ -2815,7 +2889,6 @@ async def roll(
         await interaction.response.send_message(str(erro), ephemeral=True)
         return
 
-    valores_dados = sum(valor for _, valor in dados)
     expressao_roll = equacao.upper()
     metricas_usadas = {
         nome
@@ -2831,40 +2904,22 @@ async def roll(
     percentual_contextual = sum(
         modificadores.get(campo, 0) for campo in campos_usados
     )
+    percentual_manual = sum(
+        valor_mod
+        for valor_mod, eh_percentual, atributo in modificadores_manuais
+        if atributo is None and eh_percentual
+    )
     percentual_total = (
         percentual_contextual
-        + (valor_modificador if eh_percentual else 0)
+        + percentual_manual
         + variacao_dinamica
         - 100
     )
-    valor_fixo = valor_modificador if not eh_percentual else 0
-    status_com_buffs = float(resultado - valores_dados)
-    multiplicador_total = 1 + percentual_total / 100
-    status_base = (
-        (status_com_buffs - valor_fixo) / multiplicador_total
-        if multiplicador_total
-        else 0.0
-    )
-    status_base *= 1 + percentual_contextual / 100
-    status_com_buffs = (
-        status_base
-        * (
-            1
-            + (
-                (valor_modificador if eh_percentual else 0)
-                + variacao_dinamica
-                - 100
-            )
-            / 100
-        )
-        + valor_fixo
-    )
-    sufixo_modificador = "%" if eh_percentual else ""
-    texto_modificador = f"{valor_modificador:g}{sufixo_modificador}"
-    if atributo_modificado:
-        texto_modificador += f" {atributo_modificado.upper()}"
+    texto_modificador = formatar_modificadores(modificadores_manuais)
     linhas_buffs = []
     for campo, percentual in modificadores.items():
+        if campo not in campos_usados or not percentual:
+            continue
         abreviacao = next(
             abreviacao
             for _, _, nome_campo, abreviacao in ATRIBUTOS
