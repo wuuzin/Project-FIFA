@@ -44,6 +44,10 @@ MODIFICADOR_STATUS_RE = re.compile(
     r"^\s*([+-]?)\s*(\d+(?:[.,]\d+)?)\s*(%)?"
     r"(?:\s+([A-Za-zÀ-ÿ]+))?\s*$"
 )
+# Detecta tokens como "+5", "-10%", "+25% CHU" para barrar listas.
+TOKEN_MODIFICADOR_RE = re.compile(
+    r"[+-]?\s*\d+(?:[.,]\d+)?\s*%?(?:\s+[A-Za-zÀ-ÿ]+)?"
+)
 ABREVIACAO_PARA_ATRIBUTO = {
     abreviacao: campo for _, _, campo, abreviacao in ATRIBUTOS
 }
@@ -730,6 +734,9 @@ ACOES_DEFESA = (
 )
 
 
+_jogadores_lock = asyncio.Lock()
+
+
 def carregar_jogadores() -> dict[str, dict[str, Any]]:
     if not JOGADORES_FILE.exists():
         return {}
@@ -747,6 +754,14 @@ def carregar_jogadores() -> dict[str, dict[str, Any]]:
 def salvar_jogadores(jogadores: dict[str, dict[str, Any]]) -> None:
     with JOGADORES_FILE.open("w", encoding="utf-8") as arquivo:
         json.dump(jogadores, arquivo, ensure_ascii=False, indent=2)
+
+
+def adicionar_xp_jogador(jogador: dict[str, Any], quantidade: int) -> int:
+    """Adiciona XP uma vez e processa level-ups. Retorna o nível anterior."""
+    nivel_anterior = int(jogador["nivel"])
+    jogador["xp"] = int(jogador["xp"]) + quantidade
+    preparar_jogador(jogador, str(jogador.get("nome", "")))
+    return nivel_anterior
 
 
 def normalizar_nome_busca(nome: str) -> str:
@@ -869,13 +884,32 @@ def interpretar_atributos_bot(valor: str) -> dict[str, int]:
     return atributos
 
 
+def _garantir_modificador_unico(valor: str) -> None:
+    """Impede listas como '+25% CHU, +25% PAS' ou '+10 +5% DEF'."""
+    texto = valor.strip().strip("()[]")
+    partes = [parte.strip() for parte in re.split(r"[,;]+", texto) if parte.strip()]
+    if len(partes) > 1:
+        raise ValueError(
+            "Só é permitido **um** modificador por vez. "
+            "Ex.: `+25% CHU` — não use `+25% CHU, +25% PAS`."
+        )
+
+    tokens = TOKEN_MODIFICADOR_RE.findall(texto)
+    if len(tokens) > 1:
+        raise ValueError(
+            "Só é permitido **um** modificador por vez. "
+            "Ex.: `+25% CHU` — não use `+25% CHU +25% PAS`."
+        )
+
+
 def interpretar_modificador(valor: str | int | float | None) -> tuple[float, bool]:
     """Converte um modificador como '+5', '-10' ou '+20%' em valor e tipo."""
     if valor is None or (isinstance(valor, str) and not valor.strip()):
         return 0.0, False
     if isinstance(valor, (int, float)):
         return float(valor), False
-    correspondencia = MODIFICADOR_RE.fullmatch(valor)
+    _garantir_modificador_unico(valor)
+    correspondencia = MODIFICADOR_RE.fullmatch(valor.strip().strip("()[]"))
     if correspondencia is None:
         raise ValueError("O modificador deve estar no formato +5, -5, +20% ou -10%.")
 
@@ -895,11 +929,12 @@ def interpretar_modificador_status(
     if isinstance(valor, (int, float)):
         return float(valor), False, None
 
-    correspondencia = MODIFICADOR_STATUS_RE.fullmatch(valor)
+    _garantir_modificador_unico(valor)
+    correspondencia = MODIFICADOR_STATUS_RE.fullmatch(valor.strip().strip("()[]"))
     if correspondencia is None:
         raise ValueError(
             "O modificador deve estar no formato +5, -5, +20%, -10%, "
-            "-5% DEF ou +10% CHU."
+            "-5% DEF ou +10% CHU. Apenas um modificador por vez."
         )
 
     sinal, numero, percentual, abreviacao = correspondencia.groups()
@@ -1999,6 +2034,9 @@ class FuteBot(commands.Bot):
         self.tree.copy_global_to(guild=guild)
         try:
             await self.tree.sync(guild=guild)
+            # Evita comandos duplicados no servidor (global + guild).
+            if self.application_id is not None:
+                await self.http.bulk_upsert_global_commands(self.application_id, [])
         except discord.Forbidden as erro:
             print(
                 "Não foi possível sincronizar os comandos no servidor "
@@ -2166,7 +2204,7 @@ async def executar_acao_do_jogador(
 @bot.tree.command(name="conducao", description="Executa uma ação de condução.")
 @app_commands.describe(
     acao="Ação de drible, domínio ou recepção",
-    modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2192,7 +2230,7 @@ async def conducao(
 @bot.tree.command(name="finalizacao", description="Executa uma finalização.")
 @app_commands.describe(
     acao="Tipo de finalização",
-    modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2218,7 +2256,7 @@ async def finalizacao(
 @bot.tree.command(name="passe", description="Executa uma ação de passe.")
 @app_commands.describe(
     acao="Ação de passe, cruzamento ou lançamento",
-    modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2244,7 +2282,7 @@ async def passe(
 @bot.tree.command(name="defesa", description="Executa uma ação defensiva.")
 @app_commands.describe(
     acao="Bote, carrinho, marcação ou interceptação",
-    modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2701,7 +2739,7 @@ async def xp(interaction: discord.Interaction) -> None:
 )
 @app_commands.describe(
     equacao="Ex.: 1d20 + ((FIS - 10% + VEL) / 2)",
-    modificador="Opcional: +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
+    modificador="Opcional (apenas um): +5, -5, +20%, -10%, -5% DEF ou +10% CHU",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -3215,21 +3253,32 @@ async def alterar_xp(
         )
         return
 
-    jogadores = carregar_jogadores()
-    chave = str(jogador.id)
-    dados = jogadores.setdefault(chave, {"nome": jogador.display_name})
-    preparar_jogador(dados, jogador.display_name)
-    nivel_anterior = int(dados["nivel"])
-    dados["xp"] += quantidade
-    preparar_jogador(dados, jogador.display_name)
-    salvar_jogadores(jogadores)
+    # Confirma a interação antes de gravar. Se outra instância do bot já
+    # respondeu (comando processado em duplicata), aborta sem alterar o XP.
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.InteractionResponded:
+        return
+    except discord.HTTPException as erro:
+        # 40060 = Unknown interaction / already acknowledged
+        if erro.code in {10062, 40060}:
+            return
+        raise
+
+    async with _jogadores_lock:
+        jogadores = carregar_jogadores()
+        chave = str(jogador.id)
+        dados = jogadores.setdefault(chave, {"nome": jogador.display_name})
+        preparar_jogador(dados, jogador.display_name)
+        nivel_anterior = adicionar_xp_jogador(dados, quantidade)
+        salvar_jogadores(jogadores)
 
     mensagem_nivel = (
         f" O jogador subiu para o nível **{dados['nivel']}**."
         if int(dados["nivel"]) > nivel_anterior
         else f" Nível atual: **{dados['nivel']}**."
     )
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"**{quantidade} XP** adicionados a {jogador.mention}.{mensagem_nivel}",
         ephemeral=True,
     )
