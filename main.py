@@ -199,6 +199,77 @@ ACOES_INDIVIDUAIS = {
         "efeito": "Desestabiliza a marcação e supera o defensor na zona.",
         "falha": "O defensor lê o recurso e recupera a posse.",
     },
+    "la_croqueta": {
+        "nome": "La Croqueta",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 10,
+        "formula": "1d20 + ((TEC + VIS) / 2)",
+        "atributos": ("tecnica", "visao"),
+        "formula_tipo": "soma_dividida",
+        "divisor": 2,
+        "bonus_condicional": {"peso": {"atletico": {"tecnica": 5}}},
+        "execucao": (
+            "Passa a bola de um pé para o outro em um único tempo de passada, "
+            "no instante em que o zagueiro estica a perna para o bote, mantendo "
+            "a aceleração sem perder velocidade."
+        ),
+        "efeito": (
+            "Se o zagueiro tentar um bote ou bote de cobertura, sofre -15% "
+            "de penalidade."
+        ),
+    },
+    "giro_de_360": {
+        "nome": "Giro de 360°",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 15,
+        "formula": "1d20 + ((FIS + TEC) / 2)",
+        "atributos": ("fisico", "tecnica"),
+        "formula_tipo": "soma_dividida",
+        "divisor": 2,
+        "bonus_condicional": {"peso": {"ectomorfo": {"tecnica": 5}}},
+        "execucao": (
+            "Pisa na bola com um pé, gira o corpo 360° por cima dela e a "
+            "arrasta com a sola do outro pé, usando o tronco como escudo "
+            "contra dois marcadores."
+        ),
+        "efeito": (
+            "É ideal para escapar de uma marcação 2v1 ou de defensores que "
+            "pressionam pelas costas e pela lateral. Caso seja usado em um "
+            "turno de reação, recebe +5."
+        ),
+    },
+    "alavanca_de_braco": {
+        "nome": "Alavanca de Braço",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 15,
+        "formula": "1d20 + (((FIS - 10%) + TEC) / 2)",
+        "atributos": ("fisico", "tecnica"),
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
+        "percentual": 10,
+        "divisor": 2,
+        "bonus_condicional": {"peso": {"tanque": {"fisico": 5}}},
+        "execucao": (
+            "Conduz a bola com a perna externa enquanto usa o braço e o "
+            "ombro internos para proteger a posse sob tranco físico lateral."
+        ),
+        "efeito": "Ao superar o alvo, impede que ele o siga no próximo turno.",
+    },
+    "drible_da_vaca": {
+        "nome": "Drible da Vaca",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 10,
+        "formula": "1d20 + ((VIS + VEL) / 2)",
+        "atributos": ("visao", "velocidade"),
+        "formula_tipo": "soma_dividida",
+        "divisor": 2,
+        "bonus_condicional": {"peso": {"equilibrado": {"velocidade": 5}}},
+        "execucao": (
+            "Toca a bola por um lado do zagueiro no espaço vazio e o contorna "
+            "correndo pelo outro lado, aproveitando a leitura de espaço e a "
+            "explosão nos primeiros metros."
+        ),
+        "efeito": "Concede um buff de +2 em VIS para a ação subsequente.",
+    },
     "chute_colocado": {
         "nome": "Chute Colocado",
         "categoria": "Finalizações",
@@ -409,9 +480,13 @@ ACOES_INDIVIDUAIS = {
         "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
         "execucao": (
             "Toque rápido sem olhar, usando o calcanhar para pegar a marcação "
-            "de surpresa. Biotipo equilibrado recebe +5 em PAS."
+            "de surpresa. Atletas do biotipo equilibrado recebem +5 em PAS "
+            "para esta tática."
         ),
-        "efeito": "Reduz em 10% a capacidade de interceptação dos defensores na zona.",
+        "efeito": (
+            "Reduz em 20% a capacidade de interceptação dos defensores na zona "
+            "devido ao fator surpresa."
+        ),
     },
     "passe_pifado": {
         "nome": "Passe em Profundidade",
@@ -421,8 +496,14 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("passe", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Passe milimétrico que rasga a linha de defesa e encontra o atacante em velocidade.",
-        "efeito": "O atacante recebe +5 em VEL nos duelos subsequentes.",
+        "execucao": (
+            "Um passe milimétrico que rasga a linha de defesa e encontra o "
+            "atacante em velocidade na zona de Zaga/Área."
+        ),
+        "efeito": (
+            "O atacante recebe +5 em VEL nos duelos subsequentes. Ignora "
+            "debuffs de até 3 zonas de distância."
+        ),
     },
     "lancamento_longo_de_inversao": {
         "nome": "Inversão",
@@ -433,8 +514,14 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_reduzida_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Bola alçada que cruza o campo de um corredor lateral para o outro.",
-        "efeito": "Ignora defensores nas zonas centrais e aplica -5 em VIS na zaga adversária no próximo turno.",
+        "execucao": (
+            "Bola alçada que cruza o campo de um corredor lateral para o "
+            "outro (ex.: L. Esquerda A para L. Direita A)."
+        ),
+        "efeito": (
+            "Ignora todos os defensores nas zonas centrais. Em caso de sucesso, "
+            "ignora debuffs de até 3 zonas de distância."
+        ),
     },
     "passe_de_trivela_em_profundidade": {
         "nome": "Passe de Trivela",
@@ -463,9 +550,13 @@ ACOES_INDIVIDUAIS = {
         "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
         "execucao": (
             "Cobrança das zonas laterais visando a cabeça dos atacantes na "
-            "Zaga/Área. Biotipo equilibrado recebe +5 em PAS."
+            "Zaga/Área. Atletas do biotipo equilibrado recebem +5 em PAS "
+            "para esta tática."
         ),
-        "efeito": "Coloca a bola na disputa aérea e dá +4 em FIS para o atacante que tentar o cabeceio.",
+        "efeito": (
+            "Coloca a bola na disputa aérea. Dá +5 para o atacante que tentar "
+            "o cabeceio. Ignora debuffs de até 3 zonas de distância."
+        ),
     },
     "cruzamento_tenso_rasante": {
         "nome": "Cruzamento Rasante",
@@ -478,9 +569,12 @@ ACOES_INDIVIDUAIS = {
         "bonus_condicional": {"peso": {"atletico": {"passe": 5}}},
         "execucao": (
             "Bola cruzada à meia-altura, forte e rápida, cortando a pequena "
-            "área. Biotipo atlético recebe +5 em PAS."
+            "área."
         ),
-        "efeito": "Diminui em 5 o total do goleiro caso haja finalização.",
+        "efeito": (
+            "Atletas do biotipo atlético recebem +5 em PAS para esta tática. "
+            "Ignora debuffs de até 2 zonas de distância."
+        ),
     },
     "cruzamento_cavado_curto": {
         "nome": "Cruzamento Curto",
@@ -691,6 +785,10 @@ ACOES_CONDUCAO = (
     "dominio_orientado",
     "corta_luz",
     "firula",
+    "la_croqueta",
+    "giro_de_360",
+    "alavanca_de_braco",
+    "drible_da_vaca",
 )
 ACOES_FINALIZACAO = (
     "chute_colocado",
