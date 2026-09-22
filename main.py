@@ -2239,7 +2239,15 @@ async def executar_acao_do_jogador(
     variacao_dinamica: int | None,
     bot_alvo: str | None,
     categoria: tuple[str, ...],
+    usuario: discord.User | None = None,
 ) -> None:
+    if usuario is not None and bot_alvo:
+        await interaction.response.send_message(
+            "Informe usuário ou bot, não os dois.",
+            ephemeral=True,
+        )
+        return
+
     jogadores = carregar_jogadores()
     chave_jogador = str(interaction.user.id)
     nome_exibicao = interaction.user.display_name
@@ -2259,17 +2267,19 @@ async def executar_acao_do_jogador(
         chave_nome = re.sub(r"[^a-z0-9]+", "_", chave_nome).strip("_")
         chave_jogador = f"bot:{chave_nome}"
         nome_exibicao = bot_alvo.strip()
+    elif usuario is not None:
+        chave_jogador = str(usuario.id)
+        nome_exibicao = usuario.display_name
 
     jogador = jogadores.get(chave_jogador)
     if jogador is None:
-        await interaction.response.send_message(
-            (
-                "Esse bot não existe. Confira o nome usado em `/criar_bot`."
-                if bot_alvo
-                else "Você ainda não possui uma ficha. Use `/criar`."
-            ),
-            ephemeral=True,
-        )
+        if bot_alvo:
+            mensagem = "Esse bot não existe. Confira o nome usado em `/criar_bot`."
+        elif usuario is not None:
+            mensagem = f"{usuario.mention} ainda não possui uma ficha."
+        else:
+            mensagem = "Você ainda não possui uma ficha. Use `/criar`."
+        await interaction.response.send_message(mensagem, ephemeral=True)
         return
     dados_acao = ACOES_INDIVIDUAIS.get(acao)
     if dados_acao is None or not any(
@@ -2292,7 +2302,21 @@ async def executar_acao_do_jogador(
     except ValueError as erro:
         await interaction.response.send_message(str(erro), ephemeral=True)
         return
-    await interaction.response.send_message(embed=criar_acao_embed(resultado))
+
+    embed = criar_acao_embed(resultado)
+    if (usuario is not None and usuario.id != interaction.user.id) or bot_alvo:
+        if bot_alvo:
+            dono_ficha = str(jogador.get("nome", nome_exibicao))
+        else:
+            dono_ficha = usuario.display_name if usuario is not None else nome_exibicao
+        rodape = (
+            f"Ação solicitada por {interaction.user.display_name} "
+            f"• Ficha de {dono_ficha}"
+        )
+        if embed.footer and embed.footer.text:
+            rodape = f"{embed.footer.text} • {rodape}"
+        embed.set_footer(text=rodape)
+    await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(name="conducao", description="Executa uma ação de condução.")
@@ -2300,6 +2324,7 @@ async def executar_acao_do_jogador(
     acao="Ação de drible, domínio ou recepção",
     modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    usuario="Usuário cuja ficha será usada na ação",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_CONDUCAO))
@@ -2309,6 +2334,7 @@ async def conducao(
     acao: app_commands.Choice[str],
     modificador: str | None = None,
     variacao_dinamica: int | None = None,
+    usuario: discord.User | None = None,
     bot_alvo: str | None = None,
 ) -> None:
     await executar_acao_do_jogador(
@@ -2318,6 +2344,7 @@ async def conducao(
         variacao_dinamica,
         bot_alvo,
         ("Dribles", "Domínio"),
+        usuario,
     )
 
 
@@ -2326,6 +2353,7 @@ async def conducao(
     acao="Tipo de finalização",
     modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    usuario="Usuário cuja ficha será usada na ação",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_FINALIZACAO))
@@ -2335,6 +2363,7 @@ async def finalizacao(
     acao: app_commands.Choice[str],
     modificador: str | None = None,
     variacao_dinamica: int | None = None,
+    usuario: discord.User | None = None,
     bot_alvo: str | None = None,
 ) -> None:
     await executar_acao_do_jogador(
@@ -2344,6 +2373,7 @@ async def finalizacao(
         variacao_dinamica,
         bot_alvo,
         ("Finalizações",),
+        usuario,
     )
 
 
@@ -2352,6 +2382,7 @@ async def finalizacao(
     acao="Ação de passe, cruzamento ou lançamento",
     modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    usuario="Usuário cuja ficha será usada na ação",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_PASSE))
@@ -2361,6 +2392,7 @@ async def passe(
     acao: app_commands.Choice[str],
     modificador: str | None = None,
     variacao_dinamica: int | None = None,
+    usuario: discord.User | None = None,
     bot_alvo: str | None = None,
 ) -> None:
     await executar_acao_do_jogador(
@@ -2370,6 +2402,7 @@ async def passe(
         variacao_dinamica,
         bot_alvo,
         ("Passes", "Cruzamentos"),
+        usuario,
     )
 
 
@@ -2378,6 +2411,7 @@ async def passe(
     acao="Bote, carrinho, marcação ou interceptação",
     modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    usuario="Usuário cuja ficha será usada na ação",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.choices(acao=opcoes_de_acoes(ACOES_DEFESA))
@@ -2387,6 +2421,7 @@ async def defesa(
     acao: app_commands.Choice[str],
     modificador: str | None = None,
     variacao_dinamica: int | None = None,
+    usuario: discord.User | None = None,
     bot_alvo: str | None = None,
 ) -> None:
     await executar_acao_do_jogador(
@@ -2402,6 +2437,7 @@ async def defesa(
             "Táticas Especiais",
             "Marcação",
         ),
+        usuario,
     )
 
 
@@ -2829,12 +2865,13 @@ async def xp(interaction: discord.Interaction) -> None:
 
 @bot.tree.command(
     name="roll",
-    description="Rola uma equação usando os atributos da sua ficha.",
+    description="Rola uma equação usando os atributos de uma ficha.",
 )
 @app_commands.describe(
     equacao="Ex.: 1d20 + ((FIS - 10% + VEL) / 2)",
     modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    usuario="Usuário cuja ficha será usada no roll",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
 @app_commands.autocomplete(bot_alvo=autocompletar_bots)
@@ -2843,8 +2880,16 @@ async def roll(
     equacao: str,
     modificador: str | None = None,
     variacao_dinamica: int | None = None,
+    usuario: discord.User | None = None,
     bot_alvo: str | None = None,
 ) -> None:
+    if usuario is not None and bot_alvo:
+        await interaction.response.send_message(
+            "Informe usuário ou bot, não os dois.",
+            ephemeral=True,
+        )
+        return
+
     jogadores = carregar_jogadores()
     chave_jogador = str(interaction.user.id)
     nome_exibicao = interaction.user.display_name
@@ -2864,17 +2909,19 @@ async def roll(
         chave_nome = re.sub(r"[^a-z0-9]+", "_", chave_nome).strip("_")
         chave_jogador = f"bot:{chave_nome}"
         nome_exibicao = bot_alvo.strip()
+    elif usuario is not None:
+        chave_jogador = str(usuario.id)
+        nome_exibicao = usuario.display_name
 
     jogador = jogadores.get(chave_jogador)
     if jogador is None:
-        await interaction.response.send_message(
-            (
-                "Esse bot não existe. Confira o nome usado em `/criar_bot`."
-                if bot_alvo
-                else "Você ainda não possui uma ficha. Use `/criar` primeiro."
-            ),
-            ephemeral=True,
-        )
+        if bot_alvo:
+            mensagem = "Esse bot não existe. Confira o nome usado em `/criar_bot`."
+        elif usuario is not None:
+            mensagem = f"{usuario.mention} ainda não possui uma ficha."
+        else:
+            mensagem = "Você ainda não possui uma ficha. Use `/criar` primeiro."
+        await interaction.response.send_message(mensagem, ephemeral=True)
         return
 
     preparar_jogador(jogador, nome_exibicao)
@@ -2936,6 +2983,20 @@ async def roll(
         ),
         colour=discord.Colour.orange(),
     )
+    if usuario is not None and usuario.id != interaction.user.id:
+        embed.set_footer(
+            text=(
+                f"Roll solicitado por {interaction.user.display_name} "
+                f"• Ficha de {usuario.display_name}"
+            )
+        )
+    elif bot_alvo:
+        embed.set_footer(
+            text=(
+                f"Roll solicitado por {interaction.user.display_name} "
+                f"• Ficha de {jogador['nome']}"
+            )
+        )
     await interaction.response.send_message(embed=embed)
 
 
