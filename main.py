@@ -24,7 +24,7 @@ TOKEN = "MTU0ODQxMTAwNjE0MzcwMTI0Mg.GS0Eny.iuehjk4VtkfwpoH3GzNzESuy8EpogU0-LkkSl
 # Informe abaixo o ID do servidor ou defina DISCORD_GUILD_ID no ambiente.
 GUILD_ID = "1548126299728650434"
 CARGO_USO_BOTS_ID = 1550366349585424495
-LIMITE_RANKING = 10
+LIMITE_RANKING = 8
 VALOR_INICIAL_ATRIBUTO = 10
 VALOR_MAXIMO_ATRIBUTO = 100
 
@@ -1667,7 +1667,7 @@ def preparar_jogador(jogador: dict[str, Any], nome: str) -> bool:
     jogador["nacionalidade"] = str(jogador["nacionalidade"])
     for campo in ("nivel", "xp", "pontos_disponiveis"):
         valor_atual = int(jogador[campo])
-        valor_normalizado = max(0, valor_atual)
+        valor_normalizado = max(0, valor_atual) if campo == "nivel" else valor_atual
         jogador[campo] = valor_normalizado
         mudou = mudou or valor_atual != valor_normalizado
 
@@ -1681,6 +1681,14 @@ def preparar_jogador(jogador: dict[str, Any], nome: str) -> bool:
         jogador["xp"] -= calcular_xp_limite(jogador["nivel"])
         jogador["nivel"] += 1
         jogador["pontos_disponiveis"] += 5
+        mudou = True
+    while jogador["xp"] < 0 and jogador["nivel"] > 0:
+        jogador["nivel"] -= 1
+        jogador["xp"] += calcular_xp_limite(jogador["nivel"])
+        jogador["pontos_disponiveis"] -= 5
+        mudou = True
+    if jogador["nivel"] == 0 and jogador["xp"] < 0:
+        jogador["xp"] = 0
         mudou = True
     return mudou
 
@@ -1871,20 +1879,22 @@ def criar_atributos_embed(
     valores_efetivos = atributos_efetivos(jogador)
     modificadores, fator_estamina = modificadores_contextuais(jogador)
     for emoji, nome, campo, abreviacao in ATRIBUTOS:
+        valor_bruto = float(jogador[campo])
         valor = valores_efetivos[campo]
+        valor_arredondado = round(valor)
         percentual = modificadores.get(campo, 0)
         if campo == "estamina":
-            percentual = round((fator_estamina - 1) * 100)
-            estamina_maxima = round(valor * 10 * fator_estamina)
+            percentual_estamina = round((fator_estamina - 1) * 100)
+            estamina_maxima = round(valor_arredondado * 10 * fator_estamina)
             descricao_valor = (
-                f"{estamina_maxima} pontos ({percentual:+d}%) "
-                f"({valor:.0f} × 10)"
+                f"`{valor_arredondado}` ({percentual:+d}%) • "
+                f"{estamina_maxima} EST máx. ({percentual_estamina:+d}%)"
             )
         else:
-            descricao_valor = f"{valor:.0f} ({percentual:+d}%)"
+            descricao_valor = f"`{valor_arredondado}` ({percentual:+d}%)"
         linhas.append(
             f"**{emoji} {nome} (`{abreviacao}`)** — {descricao_valor}\n"
-            f"{barra_atributo(valor)}"
+            f"{barra_atributo(valor_bruto)}"
         )
 
     cabecalho = (
@@ -2045,21 +2055,32 @@ class TabelaAtributosView(discord.ui.LayoutView):
         )
         aumentar.callback = self._aumentar_callback
         salvar.callback = self._salvar_callback
+        cabecalho = (
+            "## ﹙📊﹚ ATRIBUTOS\n"
+            f"# {self.jogador['nome']}"
+        )
+        cabecalho = formatar_cabecalho(cabecalho)
+        thumbnail = self.jogador.get("imagem")
         children: list[discord.ui.Item] = [
-            discord.ui.TextDisplay(
-                (
-                    "Selecione um atributo, use ➕ para adicionar pontos. "
-                    "Os atributos não podem ser reduzidos abaixo de 10. "
-                    "Clique em 💾 para salvar."
-                    if self.editavel
-                    else "Tabela de atributos em modo somente leitura."
-                )
+            discord.ui.Section(
+                discord.ui.TextDisplay(cabecalho),
+                accessory=(
+                    discord.ui.Thumbnail(str(thumbnail))
+                    if thumbnail
+                    else discord.ui.Button(
+                        label="atributos",
+                        style=discord.ButtonStyle.secondary,
+                        disabled=True,
+                    )
+                ),
             ),
             discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+        ]
+        children.append(
             discord.ui.TextDisplay(
                 criar_atributos_embed(self.jogador, self.cor).description or ""
-            ),
-        ]
+            )
+        )
         imagem_atributos = self.jogador.get("imagem_atributos")
         if imagem_atributos:
             children.extend(
@@ -2107,6 +2128,20 @@ class TabelaAtributosView(discord.ui.LayoutView):
         return True
 
 
+def formatar_linha_ranking(
+    posicao: int,
+    jogador: dict[str, Any],
+) -> str:
+    espacador_thumbnail = "\u2800" * 4
+    return (
+        f"`{posicao:02}` **{discord.utils.escape_markdown(str(jogador['nome']))}**{espacador_thumbnail}\n"
+        f"﹙⚽﹚ `{jogador.get('posicao', 'Não definida')}`{espacador_thumbnail}\n"
+        f"﹙👕﹚ `{jogador.get('numero', 'N/A')}`{espacador_thumbnail}\n"
+        f"﹙🎖️﹚ **NÍVEL:** `{jogador['nivel']}`{espacador_thumbnail}\n"
+        f"{barra_xp(jogador)}"
+    )
+
+
 def criar_ranking_embed(
     ranking: list[tuple[str, dict[str, Any]]],
     pagina: int = 1,
@@ -2114,17 +2149,11 @@ def criar_ranking_embed(
     inicio = (pagina - 1) * LIMITE_RANKING
     jogadores_pagina = ranking[inicio:inicio + LIMITE_RANKING]
     linhas = [
-        (
-            f"`{inicio + indice:02}` **{discord.utils.escape_markdown(str(jogador['nome']))}**\n"
-            f"> 🏷️ {jogador.get('posicao', 'Não definida')} "
-            f"• 👕 Camisa `{jogador.get('numero', 'N/A')}` "
-            f"• ⭐ Nível `{jogador['nivel']}`\n"
-            f"> {barra_xp(jogador)}"
-        )
+        formatar_linha_ranking(inicio + indice, jogador)
         for indice, (_, jogador) in enumerate(jogadores_pagina, start=1)
     ]
     embed = discord.Embed(
-        title="Tabela de experiência",
+        title="﹙🏆﹚ RANKING",
         description="\n".join(linhas) if linhas else "Nenhum jogador registrado.",
         colour=discord.Colour.gold(),
     )
@@ -2164,16 +2193,48 @@ class RankingView(discord.ui.LayoutView):
         )
         anterior.callback = self._pagina_anterior
         proxima.callback = self._proxima_pagina
+        conteudo: list[discord.ui.Item] = [
+            discord.ui.TextDisplay(f"## {embed.title}"),
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            discord.ui.TextDisplay(f"### Página {self.pagina}"),
+        ]
+        inicio = (self.pagina - 1) * LIMITE_RANKING
+        jogadores_pagina = self.ranking[inicio:inicio + LIMITE_RANKING]
+        if jogadores_pagina:
+            for indice, (_, jogador) in enumerate(jogadores_pagina, start=1):
+                if indice > 1:
+                    conteudo.append(
+                        discord.ui.Separator(
+                            spacing=discord.SeparatorSpacing.small
+                        )
+                    )
+                imagem = jogador.get("imagem")
+                accessory: discord.ui.Thumbnail | discord.ui.Button
+                if imagem:
+                    accessory = discord.ui.Thumbnail(str(imagem))
+                else:
+                    accessory = discord.ui.Button(
+                        label="—",
+                        style=discord.ButtonStyle.secondary,
+                        disabled=True,
+                    )
+                conteudo.append(
+                    discord.ui.Section(
+                        discord.ui.TextDisplay(
+                            formatar_linha_ranking(inicio + indice, jogador)
+                        ),
+                        accessory=accessory,
+                    )
+                )
+        else:
+            conteudo.append(
+                discord.ui.TextDisplay("Nenhum jogador registrado.")
+            )
+        conteudo.append(discord.ui.ActionRow(anterior, proxima))
+        conteudo.append(discord.ui.TextDisplay(f"*{embed.footer.text}*"))
         self.add_item(
             discord.ui.Container(
-                discord.ui.TextDisplay(
-                    f"# {embed.title}\n"
-                    f"## Página {self.pagina}\n\n"
-                    f"{embed.description or ''}"
-                ),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.ActionRow(anterior, proxima),
-                discord.ui.TextDisplay(f"*{embed.footer.text}*"),
+                *conteudo,
                 accent_color=discord.Colour.gold(),
             )
         )
@@ -2943,20 +3004,119 @@ async def personagem(
     )
 
 
-@bot.tree.command(name="xp", description="Mostra seu nível e progresso de experiência.")
-async def xp(interaction: discord.Interaction) -> None:
-    jogadores = carregar_jogadores()
-    jogador = jogadores.get(str(interaction.user.id))
+@bot.tree.command(
+    name="xp",
+    description="Consulta seu XP ou altera a experiência de um jogador.",
+)
+@app_commands.describe(
+    jogador="Jogador para consultar ou alterar (alterações exigem administrador)",
+    quantidade="XP a adicionar; use valor negativo para remover XP",
+)
+async def xp(
+    interaction: discord.Interaction,
+    jogador: discord.User | None = None,
+    quantidade: int | None = None,
+) -> None:
+    if quantidade is None:
+        if (
+            jogador is not None
+            and (
+                not interaction.guild
+                or not interaction.user.guild_permissions.administrator
+            )
+        ):
+            await interaction.response.send_message(
+                "Somente administradores podem consultar o XP de outro jogador.",
+                ephemeral=True,
+            )
+            return
+        alvo = jogador or interaction.user
+        jogadores = carregar_jogadores()
+        chave = str(alvo.id)
+        dados = jogadores.get(chave)
+        if dados is None:
+            if jogador is not None:
+                await interaction.response.send_message(
+                    f"{alvo.mention} ainda não possui uma ficha.",
+                    ephemeral=True,
+                )
+                return
+            dados = {"nome": interaction.user.display_name}
+            jogadores[chave] = dados
+        nome_alvo = alvo.display_name
+        mudou = preparar_jogador(dados, nome_alvo)
+        if jogador is None or mudou:
+            salvar_jogadores(jogadores)
+        await interaction.response.send_message(
+            embed=criar_xp_embed(dados),
+            ephemeral=True,
+        )
+        return
+
     if jogador is None:
-        jogador = {"nome": interaction.user.display_name}
-        jogadores[str(interaction.user.id)] = jogador
-        preparar_jogador(jogador, interaction.user.display_name)
-        salvar_jogadores(jogadores)
-    elif preparar_jogador(jogador, interaction.user.display_name):
+        await interaction.response.send_message(
+            "Informe o jogador ao adicionar ou remover XP.",
+            ephemeral=True,
+        )
+        return
+    if not interaction.guild or not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "Somente administradores podem alterar o XP de jogadores.",
+            ephemeral=True,
+        )
+        return
+    if quantidade == 0:
+        await interaction.response.send_message(
+            "A quantidade de XP deve ser diferente de zero.",
+            ephemeral=True,
+        )
+        return
+
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.InteractionResponded:
+        return
+    except discord.HTTPException as erro:
+        if erro.code in {10062, 40060}:
+            return
+        raise
+
+    async with _jogadores_lock:
+        jogadores = carregar_jogadores()
+        chave = str(jogador.id)
+        dados = jogadores.setdefault(chave, {"nome": jogador.display_name})
+        preparar_jogador(dados, jogador.display_name)
+        quantidade_aplicada = quantidade
+        if quantidade < 0:
+            xp_acumulado = int(dados["xp"]) + sum(
+                calcular_xp_limite(nivel)
+                for nivel in range(int(dados["nivel"]))
+            )
+            quantidade_aplicada = -min(abs(quantidade), xp_acumulado)
+        nivel_anterior = adicionar_xp_jogador(dados, quantidade_aplicada)
         salvar_jogadores(jogadores)
 
-    await interaction.response.send_message(
-        embed=criar_xp_embed(jogador),
+    nivel_atual = int(dados["nivel"])
+    if nivel_atual > nivel_anterior:
+        mensagem_nivel = f"Subiu para o nível **{nivel_atual}**."
+    elif nivel_atual < nivel_anterior:
+        mensagem_nivel = f"Caiu para o nível **{nivel_atual}**."
+    else:
+        mensagem_nivel = f"Permanece no nível **{nivel_atual}**."
+    verbo_xp = "adicionados" if quantidade_aplicada > 0 else "removidos"
+    if quantidade_aplicada == 0:
+        await interaction.followup.send(
+            f"{jogador.mention} não possui XP para remover. "
+            f"Permanece no nível **{nivel_atual}**, com "
+            f"**{dados['xp']} XP** e **{dados['pontos_disponiveis']} "
+            "pontos disponíveis.",
+            ephemeral=True,
+        )
+        return
+    await interaction.followup.send(
+        f"**{abs(quantidade_aplicada)} XP {verbo_xp}** de {jogador.mention}. "
+        f"{mensagem_nivel} Saldo: **{dados['xp']} XP** e "
+        f"**{dados['pontos_disponiveis']} pontos disponíveis**.",
         ephemeral=True,
     )
 
@@ -3450,24 +3610,26 @@ async def alterar_atributo(
 
 
 @bot.tree.command(
-    name="alterar_xp",
-    description="Adiciona XP a um jogador (administrador).",
+    name="remover_pontos",
+    description="Remove pontos disponíveis de um jogador (administrador).",
 )
 @app_commands.checks.has_permissions(administrator=True)
-async def alterar_xp(
+@app_commands.describe(
+    jogador="Jogador que terá pontos removidos",
+    quantidade="Quantidade de pontos a remover",
+)
+async def remover_pontos(
     interaction: discord.Interaction,
     jogador: discord.User,
     quantidade: int,
 ) -> None:
-    if quantidade < 0:
+    if quantidade <= 0:
         await interaction.response.send_message(
-            "A quantidade de XP não pode ser negativa.",
+            "A quantidade de pontos deve ser maior que zero.",
             ephemeral=True,
         )
         return
 
-    # Confirma a interação antes de gravar. Se outra instância do bot já
-    # respondeu (comando processado em duplicata), aborta sem alterar o XP.
     try:
         await interaction.response.defer(ephemeral=True)
     except discord.InteractionResponded:
@@ -3483,16 +3645,12 @@ async def alterar_xp(
         chave = str(jogador.id)
         dados = jogadores.setdefault(chave, {"nome": jogador.display_name})
         preparar_jogador(dados, jogador.display_name)
-        nivel_anterior = adicionar_xp_jogador(dados, quantidade)
+        dados["pontos_disponiveis"] -= quantidade
         salvar_jogadores(jogadores)
 
-    mensagem_nivel = (
-        f" O jogador subiu para o nível **{dados['nivel']}**."
-        if int(dados["nivel"]) > nivel_anterior
-        else f" Nível atual: **{dados['nivel']}**."
-    )
     await interaction.followup.send(
-        f"**{quantidade} XP** adicionados a {jogador.mention}.{mensagem_nivel}",
+        f"Removidos **{quantidade} pontos disponíveis** de {jogador.mention}. "
+        f"Saldo atual: **{dados['pontos_disponiveis']}**.",
         ephemeral=True,
     )
 
@@ -3503,6 +3661,8 @@ async def ranking(interaction: discord.Interaction) -> None:
     ranking_atual: list[tuple[str, dict[str, Any]]] = []
     mudou = False
     for chave, jogador in jogadores.items():
+        if jogador.get("tipo") == "bot":
+            continue
         mudou = preparar_jogador(jogador, str(jogador.get("nome", chave))) or mudou
         ranking_atual.append((chave, jogador))
 
