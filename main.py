@@ -115,7 +115,7 @@ ACOES_INDIVIDUAIS = {
     "caneta_janela": {
         "nome": "Caneta / Janela",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 15,
+        "custo_est": 16,
         "formula": "1d20 + ((TEC - 25% + VIS) / 2)",
         "atributos": ("tecnica", "visao"),
         "formula_tipo": "primeiro_reduzido_soma_dividida",
@@ -128,10 +128,31 @@ ACOES_INDIVIDUAIS = {
         ),
         "falha": "A bola é entregue nos pés do defensor.",
     },
+    "chapeu": {
+        "nome": "Chapéu",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 10,
+        "formula": "1d20 + ((TEC + VIS) / 2)",
+        "atributos": ("tecnica", "visao"),
+        "formula_tipo": "soma_dividida",
+        "divisor": 2,
+        "execucao": (
+            "Ao ser abordado de frente, encobre o adversário com um toque "
+            "sutil por cima da cabeça e passa por baixo para recuperar a bola "
+            "antes que ela toque o solo."
+        ),
+        "efeito": (
+            "Supera o marcador mantendo a posse da bola no ar. Sofre -10 no "
+            "duelo contra oponentes de estatura alta."
+        ),
+        "falha": (
+            "O defensor lê a trajetória, antecipa e recupera a posse de bola."
+        ),
+    },
     "pique_adiantado": {
         "nome": "Pique Adiantado",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 15,
+        "custo_est": 20,
         "formula": "1d20 ((FIS + VEL) / 2)",
         "atributos": ("fisico", "velocidade"),
         "bonus_condicional": {"peso": {"ectomorfo": {"velocidade": 5}}},
@@ -145,7 +166,7 @@ ACOES_INDIVIDUAIS = {
     "giro_de_pivo": {
         "nome": "Giro de Pivô",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 10,
+        "custo_est": 12,
         "formula": "1d20 + ((FIS + TEC) / 2)",
         "atributos": ("fisico", "tecnica"),
         "bonus_condicional": {"peso": {"tanque": {"fisico": 5}}},
@@ -159,7 +180,7 @@ ACOES_INDIVIDUAIS = {
     "dominio_orientado": {
         "nome": "Domínio Orientado",
         "categoria": "Domínio e Recepção Orientada",
-        "custo_est": 5,
+        "custo_est": 10,
         "formula": "1d20 ((TEC + VEL) / 2)",
         "atributos": ("tecnica", "velocidade"),
         "execucao": (
@@ -172,161 +193,313 @@ ACOES_INDIVIDUAIS = {
     "corta_luz": {
         "nome": "Corta-Luz",
         "categoria": "Domínio e Recepção Orientada",
-        "custo_est": 10,
+        "custo_est": 20,
         "formula": "1d20 ((VIS + TEC) / 2)",
         "atributos": ("visao", "tecnica"),
         "execucao": (
             "Ameaça dominar o passe, mas deixa a bola passar entre as pernas "
             "para um companheiro livre atrás."
         ),
-        "efeito": "Defensores na zona sofrem -2 em VIS no turno atual.",
+        "efeito": "A bola segue para uma zona adjacente, diretamente para um aliado.",
         "falha": "A zaga intercepta a bola sem rolar dados.",
     },
-    "firula": {
-        "nome": "Firula",
-        "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 15,
-        "formula": "1d20 + TEC",
+    "dominio_de_letra": {
+        "nome": "Domínio de Letra",
+        "categoria": "Domínio e Recepção Orientada",
+        "custo_est": 24,
+        "formula": "1d20 + (TEC - 15%)",
         "atributos": ("tecnica",),
-        "formula_tipo": "soma_dividida",
+        "formula_tipo": "soma_reduzida_dividida",
+        "percentual": 15,
         "divisor": 1,
-        "bonus_condicional": {"peso": {"ectomorfo": {"tecnica": 5}}},
         "execucao": (
-            "Ação técnica ousada, como chapéu, calcanhar, letra, pedalada "
-            "rápida ou elástico, usada para desestabilizar a marcação ou "
-            "encobrir o marcador. Biotipo ectomorfo recebe +5 em TEC."
+            "Cruza uma perna por trás da perna de apoio no instante em que "
+            "a bola chega, amortecendo-a com plasticidade e alterando "
+            "inesperadamente a trajetória da recepção."
         ),
-        "efeito": "Desestabiliza a marcação e supera o defensor na zona.",
-        "falha": "O defensor lê o recurso e recupera a posse.",
+        "efeito": (
+            "Desconcerta a leitura defensiva e concede +5 em todas as ações "
+            "de Condução posteriores nesta mesma jogada. No próximo turno, "
+            "marcadores que tentarem Bote ou Bote de Cobertura contra o "
+            "usuário sofrem -5 no teste."
+        ),
+        "falha": (
+            "O jogador erra o tempo da pernada ou se enrosca com o calcanhar "
+            "de apoio; a bola espirra na canela e fica livre para a "
+            "antecipação limpa do adversário."
+        ),
     },
     "la_croqueta": {
         "nome": "La Croqueta",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 10,
+        "custo_est": 16,
         "formula": "1d20 + ((TEC + VIS) / 2)",
         "atributos": ("tecnica", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"atletico": {"tecnica": 5}}},
+        "bonus_condicional_total": {"peso": {"atletico": 5}},
         "execucao": (
             "Passa a bola de um pé para o outro em um único tempo de passada, "
             "no instante em que o zagueiro estica a perna para o bote, mantendo "
-            "a aceleração sem perder velocidade."
+            "a aceleração sem perder velocidade. Biotipo atlético recebe +5 "
+            "diretamente no resultado total."
         ),
         "efeito": (
             "Se o zagueiro tentar um bote ou bote de cobertura, sofre -15% "
             "de penalidade."
         ),
     },
+    "elastico": {
+        "nome": "Elástico",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 12,
+        "formula": "1d20 + ((TEC + VEL) / 2)",
+        "atributos": ("tecnica", "velocidade"),
+        "formula_tipo": "soma_dividida",
+        "divisor": 2,
+        "execucao": (
+            "Em um movimento fluido da mesma perna, finge conduzir a bola "
+            "para fora e a traz bruscamente para dentro, ou vice-versa, "
+            "explorando a troca de apoio do zagueiro."
+        ),
+        "efeito": (
+            "Supera o marcador em velocidade de reação no 1v1. Concede +10% "
+            "em VEL na ação imediata após o drible."
+        ),
+        "falha": (
+            "Se a zaga não cair na finta, o atacante perde o tempo de bola, "
+            "colide com o marcador e sofre desarme limpo."
+        ),
+    },
+    "pedalada": {
+        "nome": "Pedalada",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 10,
+        "formula": "1d20 + (((TEC - 10%) + VEL) / 2)",
+        "atributos": ("tecnica", "velocidade"),
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
+        "percentual": 10,
+        "divisor": 2,
+        "execucao": (
+            "Passa os pés por cima da bola sucessivamente em velocidade, "
+            "escondendo o momento e a direção exata da mudança de ritmo."
+        ),
+        "efeito": (
+            "Força o marcador direto a hesitar. O usuário recebe +5% no teste "
+            "do próximo turno."
+        ),
+        "falha": (
+            "O zagueiro ignora as fintas e dá o bote preciso na bola, "
+            "gerando contra-ataque."
+        ),
+    },
     "giro_de_360": {
         "nome": "Giro de 360°",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 15,
+        "custo_est": 20,
         "formula": "1d20 + ((FIS + TEC) / 2)",
         "atributos": ("fisico", "tecnica"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"ectomorfo": {"tecnica": 5}}},
+        "bonus_condicional_total": {"peso": {"ectomorfo": 5}},
+        "condicao": "Só pode ser usada em situações 2v1.",
         "execucao": (
             "Pisa na bola com um pé, gira o corpo 360° por cima dela e a "
             "arrasta com a sola do outro pé, usando o tronco como escudo "
-            "contra dois marcadores."
+            "contra dois marcadores. Biotipo ectomorfo recebe +5 diretamente "
+            "no resultado total."
         ),
         "efeito": (
-            "É ideal para escapar de uma marcação 2v1 ou de defensores que "
-            "pressionam pelas costas e pela lateral. Caso seja usado em um "
-            "turno de reação, recebe +5."
+            "Em um turno de reação, recebe +5. O resultado vale contra "
+            "qualquer marcador que tente alcançar o jogador neste turno."
         ),
     },
     "alavanca_de_braco": {
         "nome": "Alavanca de Braço",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 15,
+        "custo_est": 24,
         "formula": "1d20 + (((FIS - 10%) + TEC) / 2)",
         "atributos": ("fisico", "tecnica"),
         "formula_tipo": "primeiro_reduzido_soma_dividida",
         "percentual": 10,
         "divisor": 2,
-        "bonus_condicional": {"peso": {"tanque": {"fisico": 5}}},
+        "bonus_condicional_total": {"peso": {"tanque": 5}},
         "execucao": (
-            "Conduz a bola com a perna externa enquanto usa o braço e o "
-            "ombro internos para proteger a posse sob tranco físico lateral."
+            "Conduz a bola com a perna externa e usa o braço e o ombro "
+            "internos para empurrar o tronco do zagueiro, carregando a bola "
+            "em velocidade pelo meio ou pelas pontas sob tranco lateral. "
+            "Biotipo Tanque recebe +5 diretamente no resultado total."
         ),
         "efeito": "Ao superar o alvo, impede que ele o siga no próximo turno.",
     },
     "drible_da_vaca": {
         "nome": "Drible da Vaca",
         "categoria": "Dribles e Recursos Individuais",
-        "custo_est": 10,
+        "custo_est": 12,
         "formula": "1d20 + ((VIS + VEL) / 2)",
         "atributos": ("visao", "velocidade"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"equilibrado": {"velocidade": 5}}},
+        "bonus_condicional_total": {"peso": {"equilibrado": 5}},
         "execucao": (
-            "Toca a bola por um lado do zagueiro no espaço vazio e o contorna "
-            "correndo pelo outro lado, aproveitando a leitura de espaço e a "
-            "explosão nos primeiros metros."
+            "Toca a bola por um lado do zagueiro e o contorna pelo outro, "
+            "usando a leitura do espaço livre e a explosão nos primeiros "
+            "metros. Ideal contra um zagueiro de costas para o próprio gol. "
+            "Biotipo equilibrado recebe +5 diretamente no resultado total."
         ),
         "efeito": "Concede um buff de +2 em VIS para a ação subsequente.",
+    },
+    "lambreta": {
+        "nome": "Lambreta",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 16,
+        "formula": "1d20 + (((TEC - 15%) + FIS) / 2)",
+        "atributos": ("tecnica", "fisico"),
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
+        "percentual": 15,
+        "divisor": 2,
+        "execucao": (
+            "Prende a bola entre os tornozelos e a projeta em arco por cima "
+            "do próprio corpo e do defensor, como recurso plástico de emergência."
+        ),
+        "efeito": (
+            "Supera marcadores próximos quando a zaga está congestionada. "
+            "Sofre -10 no duelo contra oponentes de estatura alta."
+        ),
+        "falha": (
+            "A bola não ganha altura ou escorrega dos tornozelos, fica presa "
+            "na zaga e causa -5% em TEC no próximo turno."
+        ),
+    },
+    "corte": {
+        "nome": "Corte",
+        "categoria": "Dribles e Recursos Individuais",
+        "custo_est": 16,
+        "formula": "1d20 + VEL",
+        "atributos": ("velocidade",),
+        "formula_tipo": "soma_dividida",
+        "divisor": 1,
+        "bonus_condicional": {"peso": {"ectomorfo": {"velocidade": 5}}},
+        "execucao": (
+            "Muda bruscamente de direção com o peito do pé ou calcanhar, "
+            "fingindo um chute ou cruzamento para tirar a bola do alcance "
+            "da perna de apoio do marcador."
+        ),
+        "efeito": (
+            "Abre espaço imediato para passe ou arremate. O marcador direto "
+            "sofre -10% em DEF para tentar travar a ação seguinte nesta jogada."
+        ),
+        "falha": "O marcador antecipa o lado do corte e estica a perna.",
+    },
+    "dominio": {
+        "nome": "Domínio",
+        "categoria": "Domínio e Recepção Orientada",
+        "custo_est": 10,
+        "formula": "1d20 + TEC",
+        "atributos": ("tecnica",),
+        "formula_tipo": "soma_dividida",
+        "divisor": 1,
+        "bonus_condicional": {"peso": {"atletico": {"tecnica": 5}}},
+        "execucao": "Garante a posse limpa sem perda de tempo de reação.",
+        "efeito": (
+            "Permite realizar a próxima ação no mesmo turno sem penalidade "
+            "pela velocidade de chegada da bola."
+        ),
+        "falha": "A bola espirra do pé e permite que o marcador recupere a posse.",
+    },
+    "dominio_na_entrelinha": {
+        "nome": "Domínio na Entrelinha",
+        "categoria": "Domínio e Recepção Orientada",
+        "custo_est": 20,
+        "formula": "1d20 + VIS",
+        "atributos": ("visao",),
+        "formula_tipo": "soma_dividida",
+        "divisor": 1,
+        "efeito": "Concede +5 em PAS para a ação imediata contra a zaga desorganizada.",
+        "falha": (
+            "A linha defensiva lê a intenção e intercepta a recepção com "
+            "falta ou desarme antes do giro."
+        ),
+    },
+    "dominio_com_peito": {
+        "nome": "Domínio com o Peito",
+        "categoria": "Domínio e Recepção Orientada",
+        "custo_est": 16,
+        "formula": "1d20 + ((VIS + FIS) / 2)",
+        "atributos": ("visao", "fisico"),
+        "formula_tipo": "soma_dividida",
+        "divisor": 2,
+        "bonus_condicional": {"peso": {"mesomorfo": {"fisico": 5}}},
+        "execucao": "Amortece a bola com o peito mesmo sob tranco físico dos zagueiros.",
+        "efeito": "Permite preparar finalizações acrobáticas com +10% em CHU.",
+        "falha": (
+            "A bola rebate com força excessiva no peito ou toca no braço/mão, "
+            "gerando falta e perda imediata da posse."
+        ),
     },
     "chute_colocado": {
         "nome": "Chute Colocado",
         "categoria": "Finalizações",
-        "custo_est": 15,
-        "formula": "1d20 + ((TEC + CHU - 10%) / 2)",
+        "custo_est": 16,
+        "formula": "1d20 + (((TEC - 10%) + CHU) / 2)",
         "atributos": ("tecnica", "chute"),
-        "formula_tipo": "soma_reduzida_dividida",
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Arremate de precisão buscando os ângulos do goleiro. Biotipo equilibrado recebe +5 em CHU.",
-        "bonus_condicional": {"peso": {"equilibrado": {"chute": 5}}},
-        "efeito": "Corta em -5 o atributo FIS do goleiro no teste de defesa.",
+        "execucao": (
+            "Arremate de precisão buscando os ângulos do goleiro. Biotipo "
+            "equilibrado recebe +5 diretamente no resultado total."
+        ),
+        "bonus_condicional_total": {"peso": {"equilibrado": 5}},
+        "efeito": "Reduz em 5 um atributo do goleiro no teste de defesa.",
         "falha": "O goleiro segura a bola com firmeza, sem chance de rebote.",
     },
     "bomba_de_forca": {
         "nome": "Bomba de Força",
         "categoria": "Finalizações",
-        "custo_est": 15,
-        "formula": "1d20 + ((FIS + CHU - 10%) / 2)",
+        "custo_est": 16,
+        "formula": "1d20 + (((FIS - 10%) + CHU) / 2)",
         "atributos": ("fisico", "chute"),
-        "formula_tipo": "soma_reduzida_dividida",
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Chute brutal focado na velocidade da bola. Biotipo forte recebe +5 em FIS.",
-        "bonus_condicional": {"peso": {"mesomorfo": {"fisico": 5}}},
+        "execucao": "Chute brutal focado em vencer o goleiro pela velocidade da bola.",
+        "bonus_condicional_total": {"peso": {"mesomorfo": 5}},
         "efeito": (
-            "Se for no gol, o goleiro sofre -5 em TEC para segurar e, mesmo "
-            "defendendo, deve espalmar, gerando rebote obrigatório."
+            "Se for no gol, o goleiro sofre -5 em TEC para segurar. Mesmo "
+            "que defenda, deve espalmar para gerar rebote obrigatório na "
+            "Zaga/Área. Biotipo forte (Mesomorfo) recebe +5 diretamente no "
+            "resultado total."
         ),
         "falha": "Total menor que 10 isola a bola por cima do gol.",
     },
     "chute_de_trivela": {
         "nome": "Chute de Trivela",
         "categoria": "Finalizações",
-        "custo_est": 20,
-        "formula": "1d20 + ((TEC - 10% + CHU) / 2)",
+        "custo_est": 24,
+        "formula": "1d20 + (((TEC - 15%) + CHU) / 2)",
         "atributos": ("tecnica", "chute"),
         "formula_tipo": "primeiro_reduzido_soma_dividida",
-        "percentual": 10,
+        "percentual": 15,
         "divisor": 2,
-        "execucao": "Finalização com o lado externo do pé. Biotipo atlético recebe +5 em CHU.",
-        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
-        "efeito": "Aplica -5 em DEF do goleiro e dos zagueiros.",
-        "falha": "A falha resulta em chute fraco ou torto e tiro de meta.",
+        "execucao": (
+            "Finalização com o lado externo do pé que muda de trajetória no "
+            "ar. Biotipo atlético recebe +5 diretamente no resultado total."
+        ),
+        "bonus_condicional_total": {"peso": {"atletico": 5}},
+        "efeito": "Aplica um debuff direto de -10 no goleiro.",
+        "falha": "Qualquer falha resulta em chute fraco ou torto e tiro de meta.",
     },
     "cavada_cobertura": {
         "nome": "Cavada / Cobertura",
         "categoria": "Finalizações",
-        "custo_est": 20,
+        "custo_est": 24,
         "formula": "1d20 + ((CHU + TEC + VIS) / 3)",
         "atributos": ("chute", "tecnica", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 3,
-        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
-        "execucao": "Biotipo atlético recebe +5 em CHU para esta tática.",
-        "efeito": "Com o goleiro fora do gol, o teste de defesa sofre -50%.",
-        "falha": "Com o goleiro na linha, o resultado do chute é cortado pela metade.",
+        "efeito": "Só pode ser defendida por habilidades defensivas aéreas dos defensores.",
+        "falha": "A bola sai fraca e é facilmente interceptada.",
     },
     "chute_normal": {
         "nome": "Chute Normal",
@@ -342,58 +515,83 @@ ACOES_INDIVIDUAIS = {
         ),
     },
     "finalizacao_de_primeira_sem_pulo": {
-        "nome": "Finalização de Primeira / Sem Pulo",
+        "nome": "Finalização de Primeira",
         "categoria": "Finalizações",
-        "custo_est": 10,
+        "custo_est": 24,
         "formula": "1d20 + ((VIS + CHU) / 2)",
         "atributos": ("visao", "chute"),
-        "formula_tipo": "soma_dividida",
+        "formula_tipo": "segundo_reduzido_soma_dividida",
+        "percentual": 50,
         "divisor": 2,
-        "penalidade_execucao": "-10 em CHU",
-        "penalidade_atributo": "chute",
-        "penalidade_valor": -10,
-        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
-        "efeito": "Reduz pela metade o bloqueio dos zagueiros e a reação do goleiro.",
-        "falha": "Rolagens no total inferiores a 10 fazem o atacante furar ou mandar a bola para fora.",
+        "penalidade_execucao": "-50% em CHU pelo tempo de bola imperfeito.",
+        "bonus_condicional_total": {"peso": {"atletico": 5}},
+        "efeito": (
+            "Reduz pela metade a pontuação de bloqueio dos zagueiros e a "
+            "reação do goleiro, pegando a defesa desprevenida. Biotipo "
+            "atlético recebe +5 diretamente no resultado total."
+        ),
+        "falha": "Rolagens inferiores a 10 fazem o atacante furar ou mandar a bola para fora.",
     },
     "bicicleta_acrobatico": {
         "nome": "Bicicleta / Acrobático",
         "categoria": "Finalizações",
-        "custo_est": 25,
+        "custo_est": 30,
         "formula": "1d20 + ((TEC - 50% + CHU) / 2)",
         "atributos": ("tecnica", "chute"),
         "formula_tipo": "primeiro_reduzido_soma_dividida",
         "percentual": 50,
         "divisor": 2,
         "condicao": "Exige bola alçada no ar.",
-        "bonus_condicional": {"altura": {"alto": {"chute": 5}}},
-        "efeito": "O goleiro sofre -10 em DEF e TEC devido ao fator surpresa.",
-        "falha": "Total menor que 18 anula a jogada por falta técnica.",
+        "bonus_condicional_total": {"altura": {"alto": 5}},
+        "efeito": (
+            "Se for no gol, todos os defensores sofrem um debuff de -1d20 "
+            "devido ao fator surpresa. Altura alta concede "
+            "+5 diretamente no resultado total."
+        ),
+        "falha": (
+            "Total menor que 18 anula a jogada por falta técnica; o atacante "
+            "fica no chão e incapaz de agir no turno seguinte."
+        ),
     },
     "cabeceio": {
         "nome": "Cabeceio",
         "categoria": "Finalizações",
-        "custo_est": 15,
-        "formula": "1d20 + ((TEC + VIS) / 2)",
-        "atributos": ("tecnica", "visao"),
+        "custo_est": 12,
+        "formula": "1d20 + ((FIS + VIS) / 2)",
+        "atributos": ("fisico", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
         "condicao": "Exige cruzamento a meia-altura na zona de Zaga/Área.",
-        "bonus_condicional": {"altura": {"alto": {"tecnica": 5}}},
-        "efeito": "Garante +2 em FIS no duelo aéreo e rebote frontal se defendido.",
-        "falha": "Falha contra o zagueiro causa -10 EST e -5 em VEL no próximo turno.",
+        "bonus_condicional_total": {"altura": {"alto": 5}},
+        "efeito": (
+            "O atacante se projeta à frente do zagueiro. Se o goleiro defender, "
+            "é obrigado a espalmar para a frente. Altura alta concede +5 "
+            "diretamente no resultado total."
+        ),
+        "falha": (
+            "Falhar no teste contra o zagueiro causa colisão física, perda "
+            "de 10 EST e debuff de -5 no próximo turno."
+        ),
     },
     "chute_cruzado": {
         "nome": "Chute Cruzado",
         "categoria": "Finalizações",
-        "custo_est": 10,
-        "formula": "1d20 + ((TEC + CHU - 5) / 2)",
+        "custo_est": 20,
+        "formula": "1d20 + (((TEC + CHU) - 25%) / 2)",
         "atributos": ("tecnica", "chute"),
-        "formula_tipo": "soma_constante_dividida",
-        "constante": -5,
+        "formula_tipo": "soma_reduzida_dividida",
+        "percentual": 25,
         "divisor": 2,
-        "execucao": "Arremate em direção à trave mais distante. Anula o debuff de lado de campo para canhotos e destros.",
-        "efeito": "O goleiro sofre -2 em VIS; rebote vai para o centro da área.",
+        "execucao": (
+            "Arremate forte em direção à trave mais distante. Quando usado "
+            "pelo lado oposto ao pé dominante, recebe +5 diretamente no "
+            "resultado total."
+        ),
+        "efeito": (
+            "Obriga o goleiro a cobrir a maior área possível do gol, causando "
+            "debuff de -5. O rebote é projetado para o centro da área, "
+            "favorecendo companheiros no piso de ataque."
+        ),
         "falha": "Erros de precisão fazem a bola sair em tiro de meta.",
     },
     "chute_curvo": {
@@ -405,59 +603,89 @@ ACOES_INDIVIDUAIS = {
         "formula_tipo": "soma_reduzida_dividida",
         "percentual": 10,
         "divisor": 2,
-        "execucao": "Arremate de média ou longa distância em que a bola oscila antes de cair bruscamente.",
-        "efeito": "Aplica -3 em DEF nos defensores e -3 em DEF no goleiro, dificultando a leitura da trajetória.",
-        "bonus_condicional": {"peso": {"equilibrado": {"chute": 5}}},
-        "falha": "Rolagens no total inferiores a 10 isolam a bola por cima do travessão.",
+        "execucao": (
+            "Arremate de média ou longa distância em que a bola oscila "
+            "verticalmente antes de cair bruscamente. Biotipo equilibrado "
+            "recebe +5 diretamente no resultado total."
+        ),
+        "efeito": "Aplica debuff automático de -3 nos defensores e no goleiro, dificultando a leitura da trajetória.",
+        "bonus_condicional_total": {"peso": {"equilibrado": 5}},
+        "falha": (
+            "Se falhar, o atacante perde a posse. Resultados inferiores a 10 "
+            "isolam a bola por cima do travessão."
+        ),
     },
     "chute_de_letra_calcanhar": {
         "nome": "Chute de Letra / Calcanhar",
         "categoria": "Finalizações",
-        "custo_est": 15,
-        "formula": "1d20 + ((TEC - 15% + VIS - 15% + CHU - 15%) / 3)",
+        "custo_est": 24,
+        "formula": "1d20 + (((TEC + VIS + CHU) - 30%) / 3)",
         "atributos": ("tecnica", "visao", "chute"),
-        "formula_tipo": "tres_reduzidos_soma_dividida",
-        "percentuais": (15, 15, 15),
+        "formula_tipo": "soma_reduzida_dividida",
+        "percentual": 30,
         "divisor": 3,
         "condicao": "Exige estar a 1 zona do gol, de costas ou em ângulo desfavorável.",
         "efeito": "Engana a leitura do goleiro e reduz pela metade a pontuação final da defesa.",
-        "bonus_condicional": {"altura": {"baixo": {"chute": 5}}},
+        "bonus_condicional_total": {"altura": {"baixo": 5}},
+        "execucao": "Altura baixa concede +5 diretamente no resultado total.",
         "falha": "O atacante se confunde, perde a posse instantaneamente e não efetua o chute.",
     },
     "voleio": {
         "nome": "Voleio",
         "categoria": "Finalizações",
-        "custo_est": 15,
+        "custo_est": 30,
         "formula": "1d20 + ((CHU + TEC - 50%) / 2)",
         "atributos": ("chute", "tecnica"),
         "formula_tipo": "soma_reduzida_dividida",
         "percentual": 50,
         "divisor": 2,
-        "execucao": "Rebate a bola no ar assim que ela cai de um passe ou cruzamento.",
-        "efeito": "Aumenta a velocidade da bola, aplicando +5 ao resultado final do chute.",
-        "bonus_condicional": {"peso": {"atletico": {"chute": 5}}},
-        "falha": "Rolagens no total inferiores a 15 fazem o atleta errar a bola e entregar a posse ao inimigo.",
-        "bonus_resultado": 5,
+        "execucao": (
+            "Rebate a bola no ar assim que ela cai de um passe ou cruzamento, "
+            "transferindo a energia da queda para o arremate. Biotipo atlético "
+            "recebe +5 diretamente no resultado total."
+        ),
+        "efeito": "Aumenta a velocidade da bola, aplicando +10 ao resultado final do chute.",
+        "bonus_condicional_total": {"peso": {"atletico": 5}},
+        "falha": "Resultados inferiores a 15 fazem o atleta errar a bola e entregar a posse ao inimigo.",
+        "bonus_resultado": 10,
     },
     "passe_curto": {
         "nome": "Passe Curto",
         "categoria": "Passes de Manutenção e Curto Alcance",
-        "custo_est": 5,
+        "custo_est": 10,
         "formula": "1d20 + PAS",
         "atributos": ("passe",),
         "formula_tipo": "soma_dividida",
         "divisor": 1,
-        "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
+        "bonus_condicional_total": {"peso": {"equilibrado": 5}},
         "execucao": (
             "Troca de passes simples para manter a posse na mesma zona ou zona "
-            "adjacente. Biotipo equilibrado recebe +5 em PAS."
+            "adjacente. Biotipo equilibrado recebe +5 diretamente no resultado total."
         ),
         "efeito": "Garante a posse com risco quase nulo.",
+    },
+    "passe_de_primeira": {
+        "nome": "Passe de Primeira",
+        "categoria": "Passes de Manutenção e Curto Alcance",
+        "custo_est": 16,
+        "formula": "1d20 + (((PAS - 20%) + VIS) / 2)",
+        "atributos": ("passe", "visao"),
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
+        "percentual": 20,
+        "divisor": 2,
+        "efeito": (
+            "Dispensa o uso reativo de uma tática de domínio. O companheiro "
+            "que recebe o passe ganha +10% na ação imediata."
+        ),
+        "falha": (
+            "Passe mascado ou sem precisão suficiente entrega a bola aos pés "
+            "do volante ou zagueiro rival."
+        ),
     },
     "tabela_um_dois": {
         "nome": "Tabela",
         "categoria": "Passes de Manutenção e Curto Alcance",
-        "custo_est": 10,
+        "custo_est": 20,
         "formula": "1d20 + ((PAS + VEL) / 2)",
         "atributos": ("passe", "velocidade"),
         "formula_tipo": "soma_dividida",
@@ -471,17 +699,17 @@ ACOES_INDIVIDUAIS = {
     "passe_de_calcanhar": {
         "nome": "Passe de Calcanhar",
         "categoria": "Passes de Manutenção e Curto Alcance",
-        "custo_est": 10,
-        "formula": "1d20 + ((PAS - 20% + TEC - 10%) / 2)",
+        "custo_est": 20,
+        "formula": "1d20 + (((PAS - 20%) + (TEC - 20%)) / 2)",
         "atributos": ("passe", "tecnica"),
         "formula_tipo": "dois_reduzidos_soma_dividida",
-        "percentuais": (20, 10),
+        "percentuais": (20, 20),
         "divisor": 2,
-        "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
+        "bonus_condicional_total": {"peso": {"equilibrado": 5}},
         "execucao": (
             "Toque rápido sem olhar, usando o calcanhar para pegar a marcação "
-            "de surpresa. Atletas do biotipo equilibrado recebem +5 em PAS "
-            "para esta tática."
+            "de surpresa. Biotipo equilibrado recebe +5 diretamente no "
+            "resultado total."
         ),
         "efeito": (
             "Reduz em 20% a capacidade de interceptação dos defensores na zona "
@@ -491,7 +719,7 @@ ACOES_INDIVIDUAIS = {
     "passe_pifado": {
         "nome": "Passe em Profundidade",
         "categoria": "Passes de Profundidade e Ruptura",
-        "custo_est": 15,
+        "custo_est": 30,
         "formula": "1d20 + ((PAS + VIS) / 2)",
         "atributos": ("passe", "visao"),
         "formula_tipo": "soma_dividida",
@@ -501,18 +729,18 @@ ACOES_INDIVIDUAIS = {
             "atacante em velocidade na zona de Zaga/Área."
         ),
         "efeito": (
-            "O atacante recebe +5 em VEL nos duelos subsequentes. Ignora "
+            "Concede +5 nos duelos subsequentes. Ignora "
             "debuffs de até 3 zonas de distância."
         ),
     },
     "lancamento_longo_de_inversao": {
         "nome": "Inversão",
         "categoria": "Passes de Profundidade e Ruptura",
-        "custo_est": 15,
-        "formula": "1d20 + ((PAS + FIS - 10%) / 2)",
+        "custo_est": 30,
+        "formula": "1d20 + (((PAS - 20%) + FIS) / 2)",
         "atributos": ("passe", "fisico"),
-        "formula_tipo": "soma_reduzida_dividida",
-        "percentual": 10,
+        "formula_tipo": "primeiro_reduzido_soma_dividida",
+        "percentual": 20,
         "divisor": 2,
         "execucao": (
             "Bola alçada que cruza o campo de um corredor lateral para o "
@@ -520,38 +748,37 @@ ACOES_INDIVIDUAIS = {
         ),
         "efeito": (
             "Ignora todos os defensores nas zonas centrais. Em caso de sucesso, "
-            "ignora debuffs de até 3 zonas de distância."
+            "ignora debuffs de distância."
         ),
     },
     "passe_de_trivela_em_profundidade": {
         "nome": "Passe de Trivela",
         "categoria": "Passes de Profundidade e Ruptura",
-        "custo_est": 20,
-        "formula": "1d20 + ((PAS - 25% + TEC) / 2)",
+        "custo_est": 40,
+        "formula": "1d20 + (PAS + (TEC - 20%)) / 2",
         "atributos": ("passe", "tecnica"),
-        "formula_tipo": "primeiro_reduzido_soma_dividida",
-        "percentual": 25,
+        "formula_tipo": "segundo_reduzido_soma_dividida",
+        "percentual": 20,
         "divisor": 2,
         "execucao": "Passe com a parte externa do pé que faz uma curva por fora da linha dos zagueiros.",
         "efeito": (
-            "Ignora completamente a primeira linha de interceptação dos "
-            "volantes/zagueiros centrais. Quem receber o passe recebe +5 de CHU."
+            "Quem receber o passe recebe +5 em CHU."
         ),
         "falha": "Total menor que 15 faz a bola pegar efeito excessivo e sair em tiro de meta.",
     },
     "cruzamento_de_linha_de_fundo": {
-        "nome": "Cruzamento Lateral",
+        "nome": "Cruzamento",
         "categoria": "Cruzamentos e Bolas Alçadas",
-        "custo_est": 10,
+        "custo_est": 20,
         "formula": "1d20 + ((PAS + TEC) / 2)",
         "atributos": ("passe", "tecnica"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"equilibrado": {"passe": 5}}},
+        "bonus_condicional_total": {"peso": {"equilibrado": 5}},
         "execucao": (
             "Cobrança das zonas laterais visando a cabeça dos atacantes na "
-            "Zaga/Área. Atletas do biotipo equilibrado recebem +5 em PAS "
-            "para esta tática."
+            "Zaga/Área. Biotipo equilibrado recebe +5 diretamente no "
+            "resultado total."
         ),
         "efeito": (
             "Coloca a bola na disputa aérea. Dá +5 para o atacante que tentar "
@@ -561,33 +788,31 @@ ACOES_INDIVIDUAIS = {
     "cruzamento_tenso_rasante": {
         "nome": "Cruzamento Rasante",
         "categoria": "Cruzamentos e Bolas Alçadas",
-        "custo_est": 15,
+        "custo_est": 30,
         "formula": "1d20 + ((PAS + FIS) / 2)",
         "atributos": ("passe", "fisico"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"atletico": {"passe": 5}}},
         "execucao": (
             "Bola cruzada à meia-altura, forte e rápida, cortando a pequena "
-            "área."
+            "área. Biotipo atlético recebe +5 diretamente no resultado total."
         ),
         "efeito": (
-            "Atletas do biotipo atlético recebem +5 em PAS para esta tática. "
             "Ignora debuffs de até 2 zonas de distância."
         ),
     },
     "cruzamento_cavado_curto": {
         "nome": "Cruzamento Curto",
         "categoria": "Cruzamentos e Bolas Alçadas",
-        "custo_est": 15,
+        "custo_est": 30,
         "formula": "1d20 + ((PAS + VIS + TEC) / 3)",
         "atributos": ("passe", "visao", "tecnica"),
         "formula_tipo": "soma_dividida",
         "divisor": 3,
-        "bonus_condicional": {"peso": {"atletico": {"passe": 5}}},
         "execucao": (
             "Toque suave por cima do primeiro marcador para encobrir a zaga e "
-            "achar o segundo pau. Biotipo atlético recebe +5 em PAS."
+            "achar o segundo pau. Biotipo atlético recebe +5 diretamente no "
+            "resultado total."
         ),
         "efeito": "Concede +5 em CHU ao atacante que receber a bola.",
     },
@@ -599,11 +824,15 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("defesa",),
         "formula_tipo": "soma_dividida",
         "divisor": 1,
-        "bonus_condicional": {"peso": {"tanque": {"defesa": 5}}},
-        "execucao": "Lê a intenção e ataca a bola no momento exato.",
+        "bonus_condicional_total": {"peso": {"tanque": 5}},
+        "execucao": (
+            "O zagueiro lê a intenção do atacante e ataca a bola no momento "
+            "exato do domínio ou da adiantada."
+        ),
         "efeito": (
             "Rouba a bola de forma limpa e projeta para uma zona livre ou "
-            "para um companheiro na mesma zona. Biotipo Tanque recebe +5 em DEF."
+            "para um companheiro na mesma zona. Biotipo Tanque recebe +5 "
+            "diretamente no resultado total."
         ),
     },
     "carrinho": {
@@ -614,74 +843,86 @@ ACOES_INDIVIDUAIS = {
         "atributos": ("defesa", "velocidade"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"altura": {"alto": {"defesa": 5}}},
-        "execucao": "Lança-se ao gramado para cortar a bola no limite.",
+        "bonus_condicional_total": {"peso": {"mesomorfo": 5}},
+        "execucao": "O defensor se lança no gramado para cortar a bola no limite do lance.",
         "efeito": (
             "Garante o desarme ou trava o chute/passe. Se a margem de vitória "
             "for pelo menos o dobro, a defesa mantém a posse; caso contrário, "
-            "a bola sai pela lateral ou escanteio. Atletas altos recebem +5 em DEF."
+            "a bola sai pela lateral ou escanteio. Biotipo Mesomorfo recebe "
+            "+5 diretamente no resultado total."
         ),
         "falha": (
-            "Total inferior a 10 resulta em falta; inferior a 5, cartão "
-            "amarelo; falha crítica resulta em cartão vermelho."
+            "Total inferior a 10 resulta em falta; se também for inferior "
+            "a 5, cartão amarelo. Falha crítica resulta em cartão vermelho."
         ),
         "falha_critica": "Falha crítica resulta em cartão vermelho.",
     },
     "bote_de_cobertura": {
         "nome": "Bote de Cobertura",
         "categoria": "Botes e Desarmes Diretos",
-        "custo_est": 15,
+        "custo_est": 12,
         "formula": "1d20 + ((DEF + VIS) / 2)",
         "atributos": ("defesa", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "condicao": "Acionado quando um companheiro é superado na mesma zona ou adjacente.",
-        "efeito": "Anula o bônus de velocidade e força novo duelo imediato.",
+        "execucao": (
+            "Ação normalmente acionada quando um companheiro de zaga é "
+            "superado por um drible na mesma zona ou em zona adjacente."
+        ),
+        "efeito": (
+            "Entra na cobertura para disputar a bola e impedir a progressão "
+            "do atacante após o companheiro ser superado."
+        ),
     },
     "carga_de_ombro": {
         "nome": "Carga de Ombro",
         "categoria": "Jogo de Corpo e Condução Física",
-        "custo_est": 10,
+        "custo_est": 20,
         "formula": "1d20 + ((DEF + FIS) / 2)",
         "atributos": ("defesa", "fisico"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"tanque": {"defesa": 5}}},
-        "execucao": "Usa massa muscular e ombro para desestabilizar o atacante.",
+        "bonus_condicional_total": {"peso": {"tanque": 5}},
+        "execucao": (
+            "O zagueiro usa a massa muscular e o ombro para desestabilizar "
+            "o atacante que conduz a bola."
+        ),
         "efeito": (
             "O atacante perde equilíbrio e posse, que fica livre na zona, "
-            "perdendo também 10 EST. Biotipo Tanque recebe +5 em DEF."
+            "e sofre perda extra de 10 EST pelo impacto corporal. Biotipo "
+            "Tanque recebe +5 diretamente no resultado total."
         ),
         "falha": "Total inferior a 10 resulta em falta.",
     },
     "sombra_protecao_de_bola": {
         "nome": "Proteção de Bola",
         "categoria": "Jogo de Corpo e Condução Física",
-        "custo_est": 10,
-        "formula": "1d20 + ((FIS + VIS) / 2)",
+        "custo_est": 20,
+        "formula": "1d20 + ((FIS + VIS) / 2) VS 1d20 + FIS",
         "atributos": ("fisico", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "bonus_condicional": {"peso": {"tanque": {"defesa": 5}}},
+        "bonus_condicional_total": {"peso": {"tanque": 5}},
         "execucao": (
             "Coloca o corpo entre o atacante e a bola e escolta sua trajetória "
             "até a linha de fundo ou lateral sem tocá-la."
         ),
         "efeito": (
             "Garante tiro de meta ou lateral para a própria equipe, sem risco "
-            "de escanteio. Biotipo Tanque recebe +5 em DEF."
+            "de escanteio. Biotipo Tanque recebe +5 diretamente no resultado total."
         ),
     },
     "contencao": {
         "nome": "Contenção",
         "categoria": "Jogo de Corpo e Condução Física",
-        "custo_est": 5,
-        "formula": "1d20 + ((DEF + VIS - 5) / 2)",
+        "custo_est": 20,
+        "formula": "1d20 + (DEF - 5 + (VIS / 2)) VS 1d20 + FIS",
         "atributos": ("defesa", "visao"),
-        "formula_tipo": "soma_constante_dividida",
-        "constante": -5,
-        "divisor": 2,
-        "execucao": "Reduz o espaço e força o atacante a decidir sob pressão.",
+        "formula_tipo": "primeiro_mais_segundo_dividido_menos_cinco",
+        "execucao": (
+            "O zagueiro não tenta o bote; reduz o espaço, recua e força o "
+            "atacante a tomar uma decisão ruim."
+        ),
         "efeito": (
             "Impede avanço de zona e aplica -5 em CHU e -5 em PAS para qualquer "
             "ação do atacante no turno."
@@ -690,89 +931,209 @@ ACOES_INDIVIDUAIS = {
     "bloqueio_de_muralha": {
         "nome": "Bloqueio de Muralha",
         "categoria": "Bloqueios e Jogo Aéreo",
-        "custo_est": 15,
+        "custo_est": 24,
         "formula": "1d20 + ((FIS + VIS) / 2)",
         "atributos": ("fisico", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
         "execucao": "Projeta o corpo na trajetória de um arremate ou passe tenso.",
         "efeito": (
-            "Bloqueia chutes ao gol ou intercepta cruzamentos rasantes. Caso "
-            "a falha seja inferior à metade, reduz a força da bola em 1d10."
+            "Bloqueia chutes com destino ao gol ou intercepta cruzamentos "
+            "rasantes. Se o resultado da defesa for menos da metade do "
+            "resultado do ataque, reduz a força da bola em 1d10."
         ),
     },
     "cabeceio_defensivo": {
         "nome": "Cabeceio Defensivo",
         "categoria": "Bloqueios e Jogo Aéreo",
-        "custo_est": 10,
+        "custo_est": 16,
         "formula": "1d20 + ((DEF + FIS + VIS) / 3)",
         "atributos": ("defesa", "fisico", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 3,
-        "bonus_condicional": {"altura": {"alto": {"defesa": 5}}},
+        "bonus_condicional_total": {"altura": {"alto": 5}},
         "execucao": "Disputa no alto contra cruzamentos ou lançamentos longos na zona de Zaga/Área.",
         "efeito": (
             "Afasta a bola para um campo adjacente aleatório. Altura alta "
-            "aumenta DEF em +5."
+            "concede +5 diretamente no resultado total."
         ),
     },
     "armadilha_de_impedimento": {
         "nome": "Armadilha de Impedimento",
         "categoria": "Táticas Especiais e Arbitragem",
-        "custo_est": 15,
-        "formula": "1d20 + ((DEF + VIS - 5) / 2)",
+        "custo_est": 24,
+        "formula": "1d20 + (DEF + ((VIS - 10%) / 2))",
         "atributos": ("defesa", "visao"),
-        "formula_tipo": "soma_constante_dividida",
-        "constante": -5,
+        "formula_tipo": "primeiro_mais_segundo_reduzido_metade",
+        "percentual": 10,
         "divisor": 2,
-        "execucao": "A linha de zagueiros avança em sincronia quando o passe é realizado.",
+        "execucao": (
+            "A linha de zagueiros avança em sincronia exata quando o meia "
+            "adversário solta o passe."
+        ),
         "efeito": "Anula a jogada por impedimento e reverte a posse para a defesa via tiro livre indireto.",
     },
     "falta_tatica": {
         "nome": "Falta Tática",
         "categoria": "Táticas Especiais e Arbitragem",
         "custo_est": 20,
-        "formula": "1d20 + DEF",
-        "atributos": ("defesa",),
+        "formula": "1d20 + FIS VS 1d20 + FIS",
+        "atributos": ("fisico",),
         "formula_tipo": "soma_dividida",
         "divisor": 1,
-        "efeito": "Interrompe a jogada; a posse vai para o adversário com falta marcada e cartão amarelo obrigatório.",
-        "falha": "Com total inferior a 10, o zagueiro é expulso.",
+        "execucao": (
+            "O zagueiro agarra ou rasteira intencionalmente o atacante para "
+            "parar um contra-ataque mortal."
+        ),
+        "efeito": (
+            "Interrompe a jogada imediatamente; a posse vai para o adversário "
+            "com falta marcada. O zagueiro recebe obrigatoriamente cartão amarelo."
+        ),
+        "falha": "Total inferior a 10 resulta em expulsão do zagueiro.",
+        "falha_critica": "Expulsão do zagueiro.",
     },
     "marcacao_pressao": {
         "nome": "Marcação Pressão",
         "categoria": "Marcação e Anulação Posicional",
-        "custo_est": 10,
-        "formula": "1d20 + ((DEF + VEL) / 2)",
+        "custo_est": 20,
+        "formula": "1d20 + ((DEF + VEL) / 2) VS 1d20 + FIS",
         "atributos": ("defesa", "velocidade"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Cola nas costas do atacante sem a bola.",
-        "efeito": "Se receber passe, o alvo sofre -5 em TEC e -2 em VIS.",
+        "execucao": (
+            "O zagueiro cola nas costas do atacante sem a bola na zona, "
+            "impedindo que receba a bola com espaço para virar."
+        ),
+        "efeito": (
+            "Se o atacante receber um passe, sofre -5 em TEC e -5 em VIS "
+            "no turno seguinte."
+        ),
     },
     "marcacao_espelho": {
         "nome": "Marcação Espelho",
         "categoria": "Marcação e Anulação Posicional",
-        "custo_est": 5,
-        "formula": "1d20 + ((DEF + VIS) / 2)",
+        "custo_est": 10,
+        "formula": "1d20 + ((DEF + VIS) / 2) VS 1d20 + VIS",
         "atributos": ("defesa", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Acompanha o deslocamento e bloqueia o passe direto.",
-        "efeito": "Passe Curto ou Tabela contra o alvo sofre penalidade de 50% em PAS.",
+        "execucao": (
+            "O defensor mantém distância segura de 1 a 2 passos, acompanha "
+            "o deslocamento do atacante sem a bola e bloqueia o ângulo do passe direto."
+        ),
+        "efeito": (
+            "Se o alvo receber um passe, o defensor pode reagir com um teste "
+            "de interceptação com +25% diretamente no resultado total."
+        ),
     },
     "leitura_de_interceptacao": {
         "nome": "Leitura de Interceptação",
         "categoria": "Marcação e Anulação Posicional",
-        "custo_est": 15,
+        "custo_est": 30,
         "formula": "1d20 + ((DEF + VIS) / 2)",
         "atributos": ("defesa", "visao"),
         "formula_tipo": "soma_dividida",
         "divisor": 2,
-        "execucao": "Prevê a trajetória do passe antes que chegue ao destino.",
-        "efeito": "Corta o passe e recupera a posse de forma limpa.",
+        "execucao": (
+            "Ignora a disputa física e prevê a trajetória do passe no ar ou "
+            "no chão antes que chegue ao destino."
+        ),
+        "efeito": (
+            "Corta o passe ou chute antes do domínio do atacante e recupera "
+            "a posse de forma limpa na zona."
+        ),
     },
 }
+
+BONUS_TATICAS = {
+    "drible_de_corpo": ("peso", "atletico", "Biotipo Atlético"),
+    "caneta_janela": ("altura", "baixo", "Baixa estatura"),
+    "chapeu": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "pique_adiantado": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "giro_de_pivo": ("peso", "tanque", "Biotipo Tanque"),
+    "dominio_orientado": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "corta_luz": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "dominio_de_letra": ("peso", "atletico", "Biotipo Atlético"),
+    "la_croqueta": ("altura", "baixo", "Baixa estatura"),
+    "elastico": ("peso", "atletico", "Biotipo Atlético"),
+    "pedalada": ("altura", "medio", "Estatura Média"),
+    "giro_de_360": ("peso", "tanque", "Biotipo Tanque"),
+    "alavanca_de_braco": ("peso", "tanque", "Biotipo Tanque"),
+    "drible_da_vaca": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "lambreta": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "corte": ("altura", "baixo", "Baixa estatura"),
+    "dominio": ("peso", "atletico", "Biotipo Atlético"),
+    "dominio_na_entrelinha": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "dominio_com_peito": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "chute_colocado": ("altura", "baixo", "Baixa estatura"),
+    "bomba_de_forca": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "chute_de_trivela": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "cavada_cobertura": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "chute_normal": ("altura", "baixo", "Baixa estatura"),
+    "finalizacao_de_primeira_sem_pulo": ("peso", "atletico", "Biotipo Atlético"),
+    "bicicleta_acrobatico": ("altura", "alto", "Alta estatura"),
+    "cabeceio": ("altura", "alto", "Alta estatura"),
+    "chute_cruzado": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "chute_curvo": ("altura", "medio", "Estatura Média"),
+    "chute_de_letra_calcanhar": ("altura", "baixo", "Baixa estatura"),
+    "voleio": ("peso", "atletico", "Biotipo Atlético"),
+    "passe_curto": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "passe_de_primeira": ("altura", "medio", "Estatura Média"),
+    "tabela_um_dois": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "passe_de_calcanhar": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "passe_pifado": ("peso", "atletico", "Biotipo Atlético"),
+    "lancamento_longo_de_inversao": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "passe_de_trivela_em_profundidade": ("peso", "equilibrado", "Biotipo Equilibrado"),
+    "cruzamento_de_linha_de_fundo": ("altura", "medio", "Estatura Média"),
+    "cruzamento_tenso_rasante": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "cruzamento_cavado_curto": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "bote": ("peso", "tanque", "Biotipo Tanque"),
+    "carrinho": ("peso", "mesomorfo", "Biotipo Mesomorfo"),
+    "bote_de_cobertura": ("altura", "alto", "Alta estatura"),
+    "carga_de_ombro": ("peso", "tanque", "Biotipo Tanque"),
+    "sombra_protecao_de_bola": ("peso", "tanque", "Biotipo Tanque"),
+    "contencao": ("altura", "medio", "Estatura Média"),
+    "bloqueio_de_muralha": ("altura", "alto", "Alta estatura"),
+    "cabeceio_defensivo": ("altura", "alto", "Alta estatura"),
+    "armadilha_de_impedimento": ("altura", "medio", "Estatura Média"),
+    "falta_tatica": ("peso", "tanque", "Biotipo Tanque"),
+    "marcacao_pressao": ("peso", "ectomorfo", "Biotipo Ectomorfo"),
+    "marcacao_espelho": ("altura", "medio", "Estatura Média"),
+    "leitura_de_interceptacao": ("altura", "alto", "Alta estatura"),
+}
+
+if BONUS_TATICAS.keys() != ACOES_INDIVIDUAIS.keys():
+    raise ValueError("Toda tática deve ter exatamente um bônus condicional definido.")
+
+descricao_bonus_antigo = re.compile(
+    r"\s*(?:(?:Biotipo|Atletas do biotipo|Atletas com o biotipo)"
+    r"|Altura\s+(?:baixa|média|alta))"
+    r"[^.]*?(?:recebe|recebem|concede|concedem)\s+\+5\s+"
+    r"(?:em\s+[A-Z]{2,3}|diretamente no resultado total)"
+    r"(?:\s+para esta tática)?\.?",
+    re.IGNORECASE,
+)
+for chave_acao, dados_acao in ACOES_INDIVIDUAIS.items():
+    campo_condicao, valor_condicao, descricao_condicao = BONUS_TATICAS[chave_acao]
+    dados_acao.pop("bonus_condicional", None)
+    dados_acao["bonus_condicional_total"] = {
+        campo_condicao: {valor_condicao: 5}
+    }
+    descricao_bonus = (
+        f"{descricao_condicao} recebe +5 diretamente no resultado total."
+    )
+    for campo_descricao in ("execucao", "efeito"):
+        descricao_atual = str(dados_acao.get(campo_descricao, ""))
+        descricao_atual = descricao_bonus_antigo.sub("", descricao_atual).strip()
+        if descricao_atual:
+            dados_acao[campo_descricao] = descricao_atual
+        elif campo_descricao in dados_acao:
+            dados_acao.pop(campo_descricao)
+    campo_descricao = "execucao" if dados_acao.get("execucao") else "efeito"
+    descricao_atual = str(dados_acao.get(campo_descricao, ""))
+    dados_acao[campo_descricao] = (
+        f"{descricao_atual} {descricao_bonus}".strip()
+    )
 
 for dados_acao in ACOES_INDIVIDUAIS.values():
     dados_acao["custo_est"] = (int(dados_acao["custo_est"]) + 1) // 2
@@ -780,15 +1141,23 @@ for dados_acao in ACOES_INDIVIDUAIS.values():
 ACOES_CONDUCAO = (
     "drible_de_corpo",
     "caneta_janela",
+    "chapeu",
     "pique_adiantado",
     "giro_de_pivo",
     "dominio_orientado",
     "corta_luz",
-    "firula",
+    "dominio_de_letra",
     "la_croqueta",
+    "elastico",
+    "pedalada",
     "giro_de_360",
     "alavanca_de_braco",
     "drible_da_vaca",
+    "lambreta",
+    "corte",
+    "dominio",
+    "dominio_na_entrelinha",
+    "dominio_com_peito",
 )
 ACOES_FINALIZACAO = (
     "chute_colocado",
@@ -806,6 +1175,7 @@ ACOES_FINALIZACAO = (
 )
 ACOES_PASSE = (
     "passe_curto",
+    "passe_de_primeira",
     "tabela_um_dois",
     "passe_de_calcanhar",
     "passe_pifado",
@@ -1382,6 +1752,20 @@ def bonus_condicionais_aplicados(
     return aplicados
 
 
+def bonus_condicional_total_aplicado(
+    jogador: dict[str, Any],
+    dados_acao: dict[str, Any],
+) -> float:
+    bonus_total = 0.0
+    for campo_condicao, opcoes in dados_acao.get(
+        "bonus_condicional_total",
+        {},
+    ).items():
+        valor_jogador = str(jogador.get(campo_condicao)).casefold()
+        bonus_total += float(opcoes.get(valor_jogador, 0))
+    return bonus_total
+
+
 def calcular_teste_acao(
     jogador: dict[str, Any],
     atributos_status: tuple[str, ...] | list[str],
@@ -1422,7 +1806,11 @@ def calcular_teste_acao(
     fator_dinamico = variacao_dinamica / 100
     status_dinamico = status_base * fator_dinamico
     valor_modificador, eh_percentual = interpretar_modificador(modificador)
-    status_ajustado = status_dinamico + bonus_fixo
+    if eh_percentual:
+        status_ajustado = status_dinamico * (1 + valor_modificador / 100)
+    else:
+        status_ajustado = status_dinamico + valor_modificador
+    status_ajustado += bonus_fixo
     status_ajustado = max(0.0, status_ajustado)
     total = resultado_dado + status_ajustado
 
@@ -1448,6 +1836,7 @@ def calcular_acao_individual(
     modificador: str | int | float | None = None,
     dado: int | None = None,
     variacao_dinamica: int | None = None,
+    em_reacao: bool = False,
 ) -> dict[str, Any]:
     """Calcula uma ação individual cadastrada em ``ACOES_INDIVIDUAIS``."""
     chave = unicodedata.normalize("NFKD", acao.strip().lower())
@@ -1456,6 +1845,8 @@ def calcular_acao_individual(
     dados_acao = ACOES_INDIVIDUAIS.get(chave)
     if dados_acao is None:
         raise ValueError(f"Ação individual não encontrada: {acao}.")
+    if em_reacao and chave != "giro_de_360":
+        raise ValueError("O bônus de turno de reação só se aplica ao Giro de 360°.")
 
     atributos = tuple(dados_acao["atributos"])
     modificadores_contextuais_acao, _ = modificadores_contextuais(jogador)
@@ -1463,6 +1854,10 @@ def calcular_acao_individual(
         jogador,
         dados_acao,
         atributos,
+    )
+    bonus_condicional_total = bonus_condicional_total_aplicado(
+        jogador,
+        dados_acao,
     )
     valores_status = [
         float(jogador[campo])
@@ -1488,6 +1883,16 @@ def calcular_acao_individual(
         percentual = float(dados_acao.get("percentual", 0))
         primeiro = valores_status[0] * (1 - percentual / 100)
         status_base = (primeiro + sum(valores_status[1:])) / divisor
+    elif formula_tipo == "primeiro_mais_segundo_dividido_menos_cinco":
+        status_base = valores_status[0] - 5 + valores_status[1] / divisor
+    elif formula_tipo == "primeiro_mais_segundo_reduzido_metade":
+        percentual = float(dados_acao.get("percentual", 0))
+        segundo = valores_status[1] * (1 - percentual / 100)
+        status_base = valores_status[0] + segundo / divisor
+    elif formula_tipo == "segundo_reduzido_soma_dividida":
+        percentual = float(dados_acao.get("percentual", 0))
+        segundo = valores_status[1] * (1 - percentual / 100)
+        status_base = (valores_status[0] + segundo + sum(valores_status[2:])) / divisor
     elif formula_tipo == "dois_reduzidos_soma_dividida":
         percentuais = dados_acao.get("percentuais", (0, 0))
         reduzidos = [
@@ -1518,7 +1923,8 @@ def calcular_acao_individual(
         raise ValueError("A variação dinâmica deve estar entre 80% e 120%.")
     percentual_total = percentual_modificador + variacao_dinamica - 100
     status_base_com_buffs = status_base * (1 + percentual_total / 100)
-    bonus_fixo = sum(bonus_condicionais.values()) + fixo_modificador
+    bonus_reacao = 5 if em_reacao else 0
+    bonus_fixo = sum(bonus_condicionais.values()) + fixo_modificador + bonus_reacao
     if penalidade_campo in atributos:
         bonus_fixo += penalidade
     resultado = calcular_teste_acao(
@@ -1556,10 +1962,12 @@ def calcular_acao_individual(
                 if campo in atributos and percentual
             },
             "bonus_condicionais": bonus_condicionais,
+            "bonus_condicional_total": bonus_condicional_total,
             "status_base_formula": status_base,
             "percentual_contextual": percentual_total,
             "status_base_com_buffs": status_base_com_buffs,
             "bonus_fixo": bonus_fixo,
+            "bonus_reacao": bonus_reacao,
             "modificador": (
                 modificadores_manuais[0][0] if len(modificadores_manuais) == 1 else 0.0
             ),
@@ -1569,7 +1977,10 @@ def calcular_acao_individual(
             "variacao_dinamica": variacao_dinamica,
         }
     )
-    resultado["total"] = round(resultado["total"] + resultado["bonus_resultado"])
+    resultado["total"] = int(
+        round(resultado["total"] + resultado["bonus_resultado"])
+        + resultado["bonus_condicional_total"]
+    )
     _, fator_estamina = modificadores_contextuais(jogador)
     resultado["estamina_maxima"] = round(
         int(jogador.get("estamina", 0)) * 10 * fator_estamina
@@ -2357,6 +2768,8 @@ def criar_acao_embed(resultado: dict[str, Any]) -> discord.Embed:
         f"**Status com variação:** `{resultado['status_base_com_buffs']:.2f}` "
         f"({resultado['percentual_contextual']:+g}%)\n"
         f"**Valores fixos:** `{resultado.get('bonus_fixo', 0):+g}`\n"
+        f"**Bônus condicional no total:** "
+        f"`{resultado.get('bonus_condicional_total', 0):+g}`\n"
         f"**Variação dinâmica:** `{fator}`\n"
         f"**Modificador:** `{texto_modificador}`\n"
         f"**Buffs aplicados:** {texto_buffs}\n"
@@ -2399,6 +2812,7 @@ async def executar_acao_do_jogador(
     bot_alvo: str | None,
     categoria: tuple[str, ...],
     usuario: discord.User | None = None,
+    em_reacao: bool = False,
 ) -> None:
     if usuario is not None and bot_alvo:
         await interaction.response.send_message(
@@ -2457,6 +2871,7 @@ async def executar_acao_do_jogador(
             acao,
             modificador,
             variacao_dinamica=variacao_dinamica,
+            em_reacao=em_reacao,
         )
     except ValueError as erro:
         await interaction.response.send_message(str(erro), ephemeral=True)
@@ -2483,6 +2898,7 @@ async def executar_acao_do_jogador(
     acao="Ação de drible, domínio ou recepção",
     modificador="Opcional: +5, +20%, +10% CHU ou +25% CHU, +25% PAS",
     variacao_dinamica="Variação manual entre 80 e 120; vazio usa sorteio",
+    em_reacao="Ativa o bônus de +5 do Giro de 360° em um turno de reação",
     usuario="Usuário cuja ficha será usada na ação",
     bot_alvo="Nome do bot criado; disponível para administradores ou cargo autorizado",
 )
@@ -2495,6 +2911,7 @@ async def conducao(
     variacao_dinamica: int | None = None,
     usuario: discord.User | None = None,
     bot_alvo: str | None = None,
+    em_reacao: bool = False,
 ) -> None:
     await executar_acao_do_jogador(
         interaction,
@@ -2504,6 +2921,7 @@ async def conducao(
         bot_alvo,
         ("Dribles", "Domínio"),
         usuario,
+        em_reacao,
     )
 
 
