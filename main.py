@@ -20,7 +20,7 @@ from discord.ext import commands
 BASE_DIR = Path(__file__).resolve().parent
 JOGADORES_FILE = BASE_DIR / "jogadores.json"
 # Cole o token do bot entre as aspas ou defina DISCORD_TOKEN no ambiente.
-TOKEN = "MTU0ODQxMTAwNjE0MzcwMTI0Mg.GS0Eny.iuehjk4VtkfwpoH3GzNzESuy8EpogU0-LkkSlA"
+TOKEN = ""
 # Informe abaixo o ID do servidor ou defina DISCORD_GUILD_ID no ambiente.
 GUILD_ID = "1548126299728650434"
 CARGO_USO_BOTS_ID = 1550366349585424495
